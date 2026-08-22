@@ -3,8 +3,8 @@
 Build a consistent AMD64 Linux development environment with WSL.
 
 The repository is being migrated in small, independently reviewable slices. The
-current slice adds guided creation of a named Ubuntu 26.04 AMD64 distribution,
-a locked Linux user with passwordless sudo, and WSL systemd configuration.
+current slice adds a practical, manifest-driven command-line development
+toolchain to the guided Ubuntu environment.
 
 ## Requirements
 
@@ -66,6 +66,28 @@ The supplied image must match the pinned SHA-256.
 
 The setup command refuses to overwrite an existing distribution.
 
+## Development packages
+
+[`packages.txt`](packages.txt) is the baseline APT manifest. It includes Git and
+Git LFS, GitHub CLI, Python, Podman, GCC/build tools, fzf, ripgrep, ShellCheck,
+tmux, and common utilities. Package versions follow Ubuntu updates.
+
+To add missing manifest packages to an existing configured distribution, run
+from PowerShell:
+
+```powershell
+./scripts/sync-packages.ps1 -DistributionName Work-Ubuntu
+```
+
+Or run from the repository mounted inside the distribution:
+
+```bash
+bash scripts/sync-packages.sh
+```
+
+Removing a manifest entry does not uninstall the package. Package removal stays
+explicit so this project does not unexpectedly delete dependencies.
+
 ## Verification
 
 Automated checks use Pester and PSScriptAnalyzer:
@@ -93,6 +115,5 @@ irreversibly deletes that distribution's data.
 
 ## Deferred
 
-- development package installation
 - resume, state capture, and verification workflows
 - full clean-machine acceptance documentation
