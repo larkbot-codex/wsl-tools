@@ -117,6 +117,11 @@ bash scripts/verify.sh
 bash scripts/capture-state.sh
 ```
 
+Before a release, follow the
+[clean-machine acceptance checklist](docs/clean-machine-acceptance.md). It covers
+the guided cancellation path, fresh install, restart persistence, recovery,
+package reconciliation, read-only verification, and evidence to retain.
+
 ## Verification
 
 Automated checks use Pester and PSScriptAnalyzer:
@@ -144,4 +149,5 @@ irreversibly deletes that distribution's data.
 
 ## Deferred
 
-- full clean-machine acceptance documentation
+Application runtimes, editor configuration, credentials, and agent stacks are
+intentionally outside this repository's standard Linux baseline.
