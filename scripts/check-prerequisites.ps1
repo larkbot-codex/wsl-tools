@@ -1,0 +1,53 @@
+[CmdletBinding()]
+param(
+    [string] $ConfigPath
+)
+
+$ErrorActionPreference = 'Stop'
+$repoRoot = Split-Path -Parent $PSScriptRoot
+Import-Module (Join-Path $PSScriptRoot 'WslTools.psm1') -Force
+
+if (-not $ConfigPath) {
+    $ConfigPath = Join-Path $repoRoot 'config.psd1'
+}
+
+$resolvedConfigPath = (Resolve-Path -LiteralPath $ConfigPath).Path
+$config = Import-PowerShellDataFile $resolvedConfigPath
+if (-not (Test-WslConfiguration $config)) {
+    throw "Invalid WSL configuration: $resolvedConfigPath"
+}
+
+$architecture = [Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString()
+if ($architecture -ne 'X64') {
+    throw "The pinned AMD64 image requires an X64 Windows host; found '$architecture'."
+}
+
+if (-not (Get-Command wsl.exe -ErrorAction SilentlyContinue)) {
+    throw 'WSL is not installed.'
+}
+
+$versionText = ((& wsl.exe --version 2>&1 | Out-String) -replace [char] 0, '')
+if ($LASTEXITCODE -ne 0) {
+    throw 'Unable to query the installed WSL version.'
+}
+
+$wslVersion = ConvertFrom-WslVersionText $versionText
+if (-not $wslVersion) {
+    throw 'A recent Store version of WSL is required. Run: wsl --update'
+}
+
+$minimumWsl = [version] $config.MinimumWsl
+if ($wslVersion -lt $minimumWsl) {
+    throw "WSL $minimumWsl or newer is required; found $wslVersion."
+}
+
+$wslHelp = ((& wsl.exe --help 2>&1 | Out-String) -replace [char] 0, '')
+if ($wslHelp -notmatch '--vhd-size') {
+    throw 'This WSL version does not support installation-time VHD sizing. Run: wsl --update'
+}
+
+Write-Host 'WSL prerequisites passed.' -ForegroundColor Green
+Write-Host "  WSL version : $wslVersion"
+Write-Host "  Architecture: AMD64 ($architecture)"
+Write-Host "  Image       : $($config.Images.AMD64.FileName)"
+Write-Host "  Distribution: $($config.DistributionName)"

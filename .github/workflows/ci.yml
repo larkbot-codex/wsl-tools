@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 13 * * *'
+
+permissions:
+  contents: read
+
+jobs:
+  powershell:
+    if: github.event_name != 'schedule'
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install test tools
+        shell: pwsh
+        run: |
+          Install-Module Pester -Scope CurrentUser -Force -MinimumVersion 5.5.0
+          Install-Module PSScriptAnalyzer -Scope CurrentUser -Force
+      - name: Analyze PowerShell
+        shell: pwsh
+        run: Invoke-ScriptAnalyzer -Path . -Recurse -Severity Error
+      - name: Run Pester
+        shell: pwsh
+        run: Invoke-Pester ./tests -CI
+
+  image-metadata:
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Check pinned Canonical image metadata
+        shell: pwsh
+        run: |
+          $config = Import-PowerShellDataFile ./config.psd1
+          $sums = Invoke-RestMethod https://releases.ubuntu.com/resolute/SHA256SUMS
+          $expected = "$($config.Images.AMD64.Sha256) *$($config.Images.AMD64.FileName)"
+          if (($sums -split "`n") -notcontains $expected) {
+            throw 'Pinned WSL image does not match Canonical SHA256SUMS.'
+          }
