@@ -59,8 +59,14 @@ Describe 'Core setting validation' {
 }
 
 Describe 'WSL version parsing' {
-    It 'parses current Store WSL output' {
-        ConvertFrom-WslVersionText "WSL version: 2.7.12.0`nKernel version: 6.6.87.2" |
+    It 'parses localized Store WSL output' -ForEach @(
+        'WSL version: 2.7.12.0',
+        'WSL-Version: 2.7.12.0',
+        'Version WSL : 2.7.12.0',
+        'WSL のバージョン: 2.7.12.0',
+        'Versión de WSL: 2.7.12.0'
+    ) {
+        ConvertFrom-WslVersionText "$_`nKernel version: 6.6.87.2" |
             Should -Be ([version] '2.7.12')
     }
 
