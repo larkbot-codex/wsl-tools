@@ -73,4 +73,9 @@ Describe 'WSL version parsing' {
     It 'rejects output without a WSL version' {
         ConvertFrom-WslVersionText 'Windows Subsystem for Linux' | Should -BeNullOrEmpty
     }
+
+    It 'does not mistake a later component version for the WSL version' {
+        $output = "WSL is running in a degraded state`nKernel version: 6.6.87.2"
+        ConvertFrom-WslVersionText $output | Should -BeNullOrEmpty
+    }
 }

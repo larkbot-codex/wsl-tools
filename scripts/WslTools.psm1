@@ -23,7 +23,7 @@ function Test-WslVhdSize {
 function ConvertFrom-WslVersionText {
     param([AllowEmptyString()][string] $Value)
 
-    if ($Value -notmatch '(\d+)\.(\d+)\.(\d+)') {
+    if ($Value -notmatch '^[^\r\n]*?(\d+)\.(\d+)\.(\d+)') {
         return $null
     }
 
