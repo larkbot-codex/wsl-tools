@@ -101,6 +101,21 @@ function Read-WslPackageList {
     return $packages
 }
 
+function ConvertTo-WslByteSize {
+    param([Parameter(Mandatory)][string] $Value)
+
+    if (-not (Test-WslVhdSize $Value)) { throw "Invalid WSL size '$Value'." }
+    $Value -match '^(\d+)(B|M|MB|G|GB|T|TB)$' | Out-Null
+    $sizeValue = [uint64] $Matches[1]
+    $multiplier = switch ($Matches[2]) {
+        'B' { [uint64] 1 }
+        { $_ -in 'M', 'MB' } { [uint64] 1MB }
+        { $_ -in 'G', 'GB' } { [uint64] 1GB }
+        { $_ -in 'T', 'TB' } { [uint64] 1TB }
+    }
+    return $sizeValue * $multiplier
+}
+
 Export-ModuleMember -Function @(
     'Test-WslDistributionName',
     'Test-LinuxUserName',
@@ -110,5 +125,6 @@ Export-ModuleMember -Function @(
     'Test-WslConfiguration',
     'Get-WslInstallArguments',
     'Test-WslInstallHelp',
-    'Read-WslPackageList'
+    'Read-WslPackageList',
+    'ConvertTo-WslByteSize'
 )

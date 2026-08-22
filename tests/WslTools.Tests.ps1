@@ -144,3 +144,21 @@ Describe 'Development package manifest' {
         $provisioner | Should -Match 'invalid package name:'
     }
 }
+
+Describe 'Verification helpers' {
+    It 'converts supported VHD units to bytes' -ForEach @(
+        @{ Value = '50GB'; Bytes = 53687091200 }
+        @{ Value = '1024MB'; Bytes = 1073741824 }
+        @{ Value = '1TB'; Bytes = 1099511627776 }
+    ) {
+        ConvertTo-WslByteSize $Value | Should -Be $Bytes
+    }
+
+    It 'rejects an unsupported VHD unit' {
+        { ConvertTo-WslByteSize '50GiB' } | Should -Throw '*Invalid WSL size*'
+    }
+
+    It 'keeps generated state inventories out of source control' {
+        Get-Content "$PSScriptRoot/../.gitignore" | Should -Contain 'state/*.txt'
+    }
+}
