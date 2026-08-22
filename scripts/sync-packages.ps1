@@ -1,7 +1,10 @@
 [CmdletBinding()]
 param(
     [string] $DistributionName,
-    [string] $ConfigPath
+    [string] $ConfigPath,
+    [string] $ExpectedUser,
+    [string] $ExpectedHostname,
+    [string] $ExpectedVhdSize
 )
 
 $ErrorActionPreference = 'Stop'
@@ -12,6 +15,9 @@ $resolvedConfigPath = (Resolve-Path -LiteralPath $ConfigPath).Path
 $config = Import-PowerShellDataFile $resolvedConfigPath
 if (-not (Test-WslConfiguration $config)) { throw "Invalid WSL configuration: $resolvedConfigPath" }
 if (-not $DistributionName) { $DistributionName = $config.DistributionName }
+if (-not $ExpectedUser) { $ExpectedUser = $config.DefaultUser }
+if (-not $ExpectedHostname) { $ExpectedHostname = $config.Hostname }
+if (-not $ExpectedVhdSize) { $ExpectedVhdSize = $config.VhdSize }
 if (-not (Test-WslDistributionName $DistributionName)) {
     throw "Invalid WSL distribution name '$DistributionName'."
 }
@@ -23,4 +29,5 @@ if ($LASTEXITCODE -ne 0) { throw 'apt-get update failed.' }
 if ($LASTEXITCODE -ne 0) { throw 'Package installation failed.' }
 & wsl.exe --distribution $DistributionName --user root -- apt-get clean
 if ($LASTEXITCODE -ne 0) { throw 'apt-get clean failed.' }
-Write-Host "Package synchronization complete for '$DistributionName'."
+& (Join-Path $PSScriptRoot 'verify.ps1') -DistributionName $DistributionName -ExpectedUser $ExpectedUser -ExpectedHostname $ExpectedHostname -ExpectedVhdSize $ExpectedVhdSize -ConfigPath $resolvedConfigPath
+& (Join-Path $PSScriptRoot 'capture-state.ps1') -DistributionName $DistributionName -ConfigPath $resolvedConfigPath

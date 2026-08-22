@@ -1,0 +1,17 @@
+# Downloaded WSL images and exports
+.wsl/
+*.wsl
+*.tar
+*.vhdx
+
+# Generated machine inventories
+state/*.txt
+!state/README.md
+
+# Local credentials and secrets
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.token

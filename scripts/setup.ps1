@@ -7,7 +7,9 @@ param(
     [string] $ConfigPath,
     [string] $ImagePath,
     [string] $CacheDirectory = (Join-Path $env:LOCALAPPDATA 'wsl-images'),
-    [switch] $NonInteractive
+    [switch] $NonInteractive,
+    [switch] $Resume,
+    [switch] $VerifyOnly
 )
 
 $ErrorActionPreference = 'Stop'
@@ -41,13 +43,14 @@ function Read-Setting {
     return $answer.Trim()
 }
 
+if ($Resume -and $VerifyOnly) { throw '-Resume and -VerifyOnly cannot be used together.' }
 if (-not (Test-WslConfiguration $config)) { throw "Invalid WSL configuration: $resolvedConfigPath" }
 if (-not $DistributionName) { $DistributionName = $config.DistributionName }
 if (-not $UserName) { $UserName = $config.DefaultUser }
 if (-not $Hostname) { $Hostname = $config.Hostname }
 if (-not $VhdSize) { $VhdSize = $config.VhdSize }
 
-if (-not $NonInteractive) {
+if (-not $NonInteractive -and -not $Resume -and -not $VerifyOnly) {
     if (-not $PSBoundParameters.ContainsKey('DistributionName')) {
         $DistributionName = Read-Setting -Label 'WSL distribution name' -DefaultValue $DistributionName
     }
@@ -70,11 +73,18 @@ $packages = @(Read-WslPackageList (Join-Path $repoRoot 'packages.txt'))
 
 & (Join-Path $PSScriptRoot 'check-prerequisites.ps1') -ConfigPath $resolvedConfigPath
 $installed = @(Get-InstalledDistribution)
-if ($installed -contains $DistributionName) {
+$exists = $installed -contains $DistributionName
+if ($exists -and -not $Resume -and -not $VerifyOnly) {
     throw "Distribution '$DistributionName' already exists; refusing to overwrite it."
 }
+if ($Resume -and -not $exists) { throw "Distribution '$DistributionName' is not installed; there is nothing to resume." }
+if ($VerifyOnly -and -not $exists) { throw "Distribution '$DistributionName' is not installed." }
+if ($VerifyOnly) {
+    & (Join-Path $PSScriptRoot 'verify.ps1') -DistributionName $DistributionName -ExpectedUser $UserName -ExpectedHostname $Hostname -ExpectedVhdSize $VhdSize -ConfigPath $resolvedConfigPath
+    exit 0
+}
 
-if (-not $NonInteractive) {
+if (-not $NonInteractive -and -not $Resume) {
     Write-Host ''
     Write-Host 'Installation plan:' -ForegroundColor Cyan
     Write-Host "  Distribution : $DistributionName"
@@ -89,41 +99,43 @@ if (-not $NonInteractive) {
     }
 }
 
-$image = $config.Images.AMD64
-if ($ImagePath) {
-    $resolvedImage = (Resolve-Path -LiteralPath $ImagePath).Path
-} else {
-    New-Item -ItemType Directory -Force -Path $CacheDirectory | Out-Null
-    $resolvedImage = Join-Path $CacheDirectory $image.FileName
-    if (Test-Path -LiteralPath $resolvedImage) {
-        $cachedHash = (Get-FileHash -LiteralPath $resolvedImage -Algorithm SHA256).Hash.ToLowerInvariant()
-        if ($cachedHash -ne $image.Sha256) {
-            Write-Warning 'Removing an incomplete or invalid cached image.'
-            Remove-Item -LiteralPath $resolvedImage -Force
+if (-not $exists) {
+    $image = $config.Images.AMD64
+    if ($ImagePath) {
+        $resolvedImage = (Resolve-Path -LiteralPath $ImagePath).Path
+    } else {
+        New-Item -ItemType Directory -Force -Path $CacheDirectory | Out-Null
+        $resolvedImage = Join-Path $CacheDirectory $image.FileName
+        if (Test-Path -LiteralPath $resolvedImage) {
+            $cachedHash = (Get-FileHash -LiteralPath $resolvedImage -Algorithm SHA256).Hash.ToLowerInvariant()
+            if ($cachedHash -ne $image.Sha256) {
+                Write-Warning 'Removing an incomplete or invalid cached image.'
+                Remove-Item -LiteralPath $resolvedImage -Force
+            }
         }
-    }
-    if (-not (Test-Path -LiteralPath $resolvedImage)) {
-        $partial = "$resolvedImage.part"
-        Remove-Item -LiteralPath $partial -Force -ErrorAction SilentlyContinue
-        Write-Host "Downloading the pinned Ubuntu $($config.UbuntuRelease) WSL image..."
-        try {
-            Invoke-WebRequest -UseBasicParsing -Uri $image.Url -OutFile $partial
-            $partialHash = (Get-FileHash -LiteralPath $partial -Algorithm SHA256).Hash.ToLowerInvariant()
-            if ($partialHash -ne $image.Sha256) { throw 'Downloaded image checksum mismatch.' }
-            Move-Item -LiteralPath $partial -Destination $resolvedImage
-        } catch {
+        if (-not (Test-Path -LiteralPath $resolvedImage)) {
+            $partial = "$resolvedImage.part"
             Remove-Item -LiteralPath $partial -Force -ErrorAction SilentlyContinue
-            throw
+            Write-Host "Downloading the pinned Ubuntu $($config.UbuntuRelease) WSL image..."
+            try {
+                Invoke-WebRequest -UseBasicParsing -Uri $image.Url -OutFile $partial
+                $partialHash = (Get-FileHash -LiteralPath $partial -Algorithm SHA256).Hash.ToLowerInvariant()
+                if ($partialHash -ne $image.Sha256) { throw 'Downloaded image checksum mismatch.' }
+                Move-Item -LiteralPath $partial -Destination $resolvedImage
+            } catch {
+                Remove-Item -LiteralPath $partial -Force -ErrorAction SilentlyContinue
+                throw
+            }
         }
     }
+
+    $actualHash = (Get-FileHash -LiteralPath $resolvedImage -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ($actualHash -ne $image.Sha256) { throw 'Ubuntu image checksum mismatch.' }
+
+    Write-Host "Installing '$DistributionName' with a $VhdSize maximum VHD..."
+    $installArguments = Get-WslInstallArguments -ImagePath $resolvedImage -DistributionName $DistributionName -VhdSize $VhdSize
+    Invoke-Wsl -Arguments $installArguments
 }
-
-$actualHash = (Get-FileHash -LiteralPath $resolvedImage -Algorithm SHA256).Hash.ToLowerInvariant()
-if ($actualHash -ne $image.Sha256) { throw 'Ubuntu image checksum mismatch.' }
-
-Write-Host "Installing '$DistributionName' with a $VhdSize maximum VHD..."
-$installArguments = Get-WslInstallArguments -ImagePath $resolvedImage -DistributionName $DistributionName -VhdSize $VhdSize
-Invoke-Wsl -Arguments $installArguments
 
 $provision = ((Get-Content -Raw (Join-Path $PSScriptRoot 'provision.sh')) -replace "`r`n", "`n")
 $base64 = [Convert]::ToBase64String([Text.UTF8Encoding]::new($false).GetBytes($provision))
@@ -133,4 +145,6 @@ $command = "printf '%s' '$base64' | base64 --decode | bash -s -- '$UserName' '$H
 Write-Host "Provisioning '$UserName' and $($packages.Count) baseline packages..."
 Invoke-Wsl -Arguments @('--distribution', $DistributionName, '--user', 'root', '--', 'bash', '-lc', $command)
 Invoke-Wsl -Arguments @('--terminate', $DistributionName)
+& (Join-Path $PSScriptRoot 'verify.ps1') -DistributionName $DistributionName -ExpectedUser $UserName -ExpectedHostname $Hostname -ExpectedVhdSize $VhdSize -ConfigPath $resolvedConfigPath
+& (Join-Path $PSScriptRoot 'capture-state.ps1') -DistributionName $DistributionName -ConfigPath $resolvedConfigPath
 Write-Host "Ubuntu is ready. Start it with: wsl ~ -d $DistributionName"
