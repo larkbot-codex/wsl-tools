@@ -66,6 +66,7 @@ if (-not (Test-WslDistributionName $DistributionName)) { throw "Invalid WSL dist
 if (-not (Test-LinuxUserName $UserName)) { throw "Invalid Linux username '$UserName'." }
 if (-not (Test-WslHostName $Hostname)) { throw "Invalid hostname '$Hostname'." }
 if (-not (Test-WslVhdSize $VhdSize)) { throw "Invalid VHD size '$VhdSize'." }
+$packages = @(Read-WslPackageList (Join-Path $repoRoot 'packages.txt'))
 
 & (Join-Path $PSScriptRoot 'check-prerequisites.ps1') -ConfigPath $resolvedConfigPath
 $installed = @(Get-InstalledDistribution)
@@ -126,9 +127,10 @@ Invoke-Wsl -Arguments $installArguments
 
 $provision = ((Get-Content -Raw (Join-Path $PSScriptRoot 'provision.sh')) -replace "`r`n", "`n")
 $base64 = [Convert]::ToBase64String([Text.UTF8Encoding]::new($false).GetBytes($provision))
-$command = "printf '%s' '$base64' | base64 --decode | bash -s -- '$UserName' '$Hostname'"
+$quotedPackages = @($packages | ForEach-Object { "'$_'" }) -join ' '
+$command = "printf '%s' '$base64' | base64 --decode | bash -s -- '$UserName' '$Hostname' $quotedPackages"
 
-Write-Host "Provisioning '$UserName' and systemd defaults..."
+Write-Host "Provisioning '$UserName' and $($packages.Count) baseline packages..."
 Invoke-Wsl -Arguments @('--distribution', $DistributionName, '--user', 'root', '--', 'bash', '-lc', $command)
 Invoke-Wsl -Arguments @('--terminate', $DistributionName)
 Write-Host "Ubuntu is ready. Start it with: wsl ~ -d $DistributionName"

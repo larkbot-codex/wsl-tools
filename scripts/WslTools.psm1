@@ -86,6 +86,21 @@ function Test-WslInstallHelp {
     return $true
 }
 
+function Read-WslPackageList {
+    param([Parameter(Mandatory)][string] $Path)
+
+    $packages = @(Get-Content -LiteralPath $Path |
+        ForEach-Object { ($_ -replace '#.*$', '').Trim() } |
+        Where-Object { $_ })
+    if (-not $packages.Count) { throw "$Path contains no packages." }
+    foreach ($package in $packages) {
+        if ($package -notmatch '^[A-Za-z0-9][A-Za-z0-9._+:-]*$') {
+            throw "Invalid package name '$package'."
+        }
+    }
+    return $packages
+}
+
 Export-ModuleMember -Function @(
     'Test-WslDistributionName',
     'Test-LinuxUserName',
@@ -94,5 +109,6 @@ Export-ModuleMember -Function @(
     'ConvertFrom-WslVersionText',
     'Test-WslConfiguration',
     'Get-WslInstallArguments',
-    'Test-WslInstallHelp'
+    'Test-WslInstallHelp',
+    'Read-WslPackageList'
 )

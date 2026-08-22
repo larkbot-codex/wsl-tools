@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-user_name="${1:?usage: provision.sh USER HOSTNAME}"
-host_name="${2:?usage: provision.sh USER HOSTNAME}"
+user_name="${1:?usage: provision.sh USER HOSTNAME [PACKAGE ...]}"
+host_name="${2:?usage: provision.sh USER HOSTNAME [PACKAGE ...]}"
+shift 2
+packages=("$@")
 
 if [[ ${EUID} -ne 0 ]]; then
     echo 'provision.sh must run as root' >&2
@@ -65,5 +67,11 @@ enabled=true
 useWindowsTimezone=true
 EOF
 
+if ((${#packages[@]})); then
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get update
+    apt-get install --yes --no-install-recommends "${packages[@]}"
+    apt-get clean
+fi
 install -d -o "${user_name}" -g "${user_name}" -m 0755 "/home/${user_name}/projects"
-printf 'User and systemd provisioning complete.\n'
+printf 'Baseline provisioning complete.\n'
