@@ -1,0 +1,60 @@
+BeforeAll {
+    Import-Module "$PSScriptRoot/../scripts/WslTools.psm1" -Force
+    $config = Import-PowerShellDataFile "$PSScriptRoot/../config.psd1"
+}
+
+Describe 'Public defaults' {
+    It 'uses generic AMD64 environment defaults' {
+        $config.DistributionName | Should -Be 'UbuntuDev-26.04'
+        $config.DefaultUser | Should -Be 'developer'
+        $config.Hostname | Should -Be 'ubuntu-dev'
+        $config.VhdSize | Should -Be '50GB'
+        $config.Images.AMD64.FileName | Should -Be 'ubuntu-26.04-wsl-amd64.wsl'
+    }
+}
+
+Describe 'Core setting validation' {
+    It 'accepts a safe distribution name' {
+        Test-WslDistributionName 'Work-Ubuntu_26.04' | Should -BeTrue
+    }
+
+    It 'rejects unsafe distribution names' -ForEach @('', '-ubuntu', 'name with spaces', 'name;rm') {
+        Test-WslDistributionName $_ | Should -BeFalse
+    }
+
+    It 'accepts a Linux username' {
+        Test-LinuxUserName 'dev_user-1' | Should -BeTrue
+    }
+
+    It 'rejects unsafe Linux usernames' -ForEach @('', 'Developer', '1developer', 'dev user') {
+        Test-LinuxUserName $_ | Should -BeFalse
+    }
+
+    It 'accepts a hostname' {
+        Test-WslHostName 'work-ubuntu.example' | Should -BeTrue
+    }
+
+    It 'rejects unsafe hostnames' -ForEach @('', '-ubuntu', 'ubuntu_dev', 'ubuntu;dev') {
+        Test-WslHostName $_ | Should -BeFalse
+    }
+
+    It 'accepts supported VHD sizes' -ForEach @('50GB', '1024MB', '1TB') {
+        Test-WslVhdSize $_ | Should -BeTrue
+    }
+
+    It 'rejects unsupported VHD sizes' -ForEach @('', '50', '50GiB', '-1GB') {
+        Test-WslVhdSize $_ | Should -BeFalse
+    }
+}
+
+Describe 'WSL command construction' {
+    It 'passes values as separate argv entries' {
+        $arguments = Get-WslInstallArguments -ImagePath 'C:\images\ubuntu.wsl' -DistributionName 'Work-Ubuntu' -VhdSize '50GB'
+        $arguments | Should -Be @(
+            '--install', '--from-file', 'C:\images\ubuntu.wsl',
+            '--name', 'Work-Ubuntu',
+            '--vhd-size', '50GB',
+            '--no-launch'
+        )
+    }
+}
