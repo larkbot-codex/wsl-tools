@@ -29,6 +29,16 @@ jobs:
         shell: pwsh
         run: Invoke-Pester ./tests -CI
 
+  shell:
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Check Bash syntax
+        run: bash -n scripts/*.sh
+      - name: Run ShellCheck
+        run: shellcheck scripts/*.sh
+
   image-metadata:
     if: github.event_name == 'schedule'
     runs-on: ubuntu-latest

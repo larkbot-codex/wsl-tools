@@ -79,3 +79,36 @@ Describe 'WSL version parsing' {
         ConvertFrom-WslVersionText $output | Should -BeNullOrEmpty
     }
 }
+
+Describe 'WSL installation command construction' {
+    It 'passes all user values as separate argv entries' {
+        $arguments = Get-WslInstallArguments -ImagePath 'C:\images\ubuntu.wsl' -DistributionName 'Work-Ubuntu' -VhdSize '50GB'
+        $arguments | Should -Be @(
+            '--install', '--from-file', 'C:\images\ubuntu.wsl',
+            '--name', 'Work-Ubuntu',
+            '--vhd-size', '50GB',
+            '--no-launch'
+        )
+    }
+
+    It 'recognizes the complete custom-image installation capability set' {
+        $help = '--install --from-file PATH --name NAME --no-launch --vhd-size SIZE'
+        Test-WslInstallHelp $help | Should -BeTrue
+    }
+
+    It 'rejects help missing <Missing>' -ForEach @(
+        @{ Missing = '--from-file' }
+        @{ Missing = '--name' }
+        @{ Missing = '--no-launch' }
+        @{ Missing = '--vhd-size' }
+    ) {
+        $options = @('--from-file', '--name', '--no-launch', '--vhd-size') | Where-Object { $_ -ne $Missing }
+        Test-WslInstallHelp ($options -join ' ') | Should -BeFalse
+    }
+
+    It 'does not automate destructive distribution removal' {
+        $scripts = Get-ChildItem "$PSScriptRoot/../scripts" -File -Recurse |
+            Get-Content -Raw
+        ($scripts -join "`n") | Should -Not -Match 'wsl(?:\.exe)?\s+--unregister'
+    }
+}
