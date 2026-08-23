@@ -6,6 +6,13 @@ host_name="${2:?usage: provision.sh USER HOSTNAME [PACKAGE ...]}"
 shift 2
 packages=("$@")
 
+for package in "${packages[@]}"; do
+    if [[ ! ${package} =~ ^[A-Za-z0-9][A-Za-z0-9._+:-]*$ ]]; then
+        echo "invalid package name: ${package}" >&2
+        exit 1
+    fi
+done
+
 if [[ ${EUID} -ne 0 ]]; then
     echo 'provision.sh must run as root' >&2
     exit 1

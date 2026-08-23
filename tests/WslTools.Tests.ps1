@@ -136,4 +136,11 @@ Describe 'Development package manifest' {
         Set-Content -LiteralPath $path -Value 'git;id'
         { Read-WslPackageList $path } | Should -Throw '*Invalid package name*'
     }
+
+    It 'validates package names again in the privileged provisioner' {
+        $provisioner = Get-Content -Raw "$PSScriptRoot/../scripts/provision.sh"
+        $provisioner | Should -Match 'for package in "\$\{packages\[@\]\}"'
+        $provisioner | Should -Match '\[\[ ! \$\{package\} =~ \^\[A-Za-z0-9\]'
+        $provisioner | Should -Match 'invalid package name:'
+    }
 }
