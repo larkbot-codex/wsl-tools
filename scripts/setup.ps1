@@ -2,6 +2,7 @@
 param(
     [string] $DistributionName,
     [string] $UserName,
+    [Nullable[int]] $UserId,
     [string] $Hostname,
     [string] $VhdSize,
     [string] $ConfigPath,
@@ -79,8 +80,63 @@ if ($exists -and -not $Resume -and -not $VerifyOnly) {
 }
 if ($Resume -and -not $exists) { throw "Distribution '$DistributionName' is not installed; there is nothing to resume." }
 if ($VerifyOnly -and -not $exists) { throw "Distribution '$DistributionName' is not installed." }
+
+$requestedUserId = if ($PSBoundParameters.ContainsKey('UserId')) { [int] $UserId } else { $null }
+$currentUserId = $null
+$usedUserIds = [Collections.Generic.List[int]]::new()
+$targetPasswdLines = @()
+if ($exists) {
+    $previousErrorActionPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = 'Continue'
+        $targetPasswdLines = @(& wsl.exe --distribution $DistributionName --user root -- cat /etc/passwd 2>&1)
+        $passwdExitCode = $LASTEXITCODE
+    } finally {
+        $ErrorActionPreference = $previousErrorActionPreference
+    }
+    if ($passwdExitCode -ne 0) {
+        throw "Unable to inspect Linux user IDs in WSL distribution '$DistributionName'."
+    }
+    foreach ($passwdLine in $targetPasswdLines) {
+        $fields = ([string] $passwdLine -replace [char] 0, '') -split ':'
+        if ($fields.Count -lt 3 -or -not (Test-WslUserId $fields[2])) { continue }
+        if ($fields[0] -ceq $UserName) { $currentUserId = [int] $fields[2] }
+    }
+}
+
+if ($null -ne $currentUserId) {
+    $resolvedUserId = Resolve-WslUserId -CurrentUserId $currentUserId -RequestedUserId $requestedUserId
+} else {
+    if ($exists -and $VerifyOnly) { throw "User '$UserName' does not exist in '$DistributionName'." }
+    foreach ($distribution in $installed) {
+        if ($distribution -eq $DistributionName) {
+            $passwdLines = $targetPasswdLines
+        } else {
+            $previousErrorActionPreference = $ErrorActionPreference
+            try {
+                $ErrorActionPreference = 'Continue'
+                $passwdLines = @(& wsl.exe --distribution $distribution --user root -- cat /etc/passwd 2>&1)
+                $passwdExitCode = $LASTEXITCODE
+            } finally {
+                $ErrorActionPreference = $previousErrorActionPreference
+            }
+            if ($passwdExitCode -ne 0) {
+                Write-Warning "Unable to inspect Linux user IDs in WSL distribution '$distribution'; ignoring it for UID allocation."
+                continue
+            }
+        }
+        foreach ($passwdLine in $passwdLines) {
+            $fields = ([string] $passwdLine -replace [char] 0, '') -split ':'
+            if ($fields.Count -ge 3 -and (Test-WslUserId $fields[2])) { $usedUserIds.Add([int] $fields[2]) }
+        }
+    }
+    $resolvedUserId = Resolve-WslUserId -UsedUserIds $usedUserIds.ToArray() -RequestedUserId $requestedUserId
+}
+
+Write-Host "Linux UID: $resolvedUserId"
+
 if ($VerifyOnly) {
-    & (Join-Path $PSScriptRoot 'verify.ps1') -DistributionName $DistributionName -ExpectedUser $UserName -ExpectedHostname $Hostname -ExpectedVhdSize $VhdSize -ConfigPath $resolvedConfigPath
+    & (Join-Path $PSScriptRoot 'verify.ps1') -DistributionName $DistributionName -ExpectedUser $UserName -ExpectedUserId $resolvedUserId -ExpectedHostname $Hostname -ExpectedVhdSize $VhdSize -ConfigPath $resolvedConfigPath
     exit 0
 }
 
@@ -90,6 +146,7 @@ if (-not $NonInteractive -and -not $Resume) {
     Write-Host "  Distribution : $DistributionName"
     Write-Host '  Image        : Ubuntu 26.04 LTS AMD64'
     Write-Host "  Linux user   : $UserName (locked password, passwordless sudo)"
+    Write-Host "  Linux UID    : $resolvedUserId (unique across inspected WSL distributions)"
     Write-Host "  Hostname     : $Hostname"
     Write-Host "  VHD maximum  : $VhdSize"
     $confirmation = Read-Host 'Continue? [y/N]'
@@ -140,9 +197,9 @@ if (-not $exists) {
 $provision = ConvertTo-BashLineEndings (Get-Content -Raw (Join-Path $PSScriptRoot 'provision.sh'))
 $base64 = [Convert]::ToBase64String([Text.UTF8Encoding]::new($false).GetBytes($provision))
 $quotedPackages = @($packages | ForEach-Object { "'$_'" }) -join ' '
-$command = "printf '%s' '$base64' | base64 --decode | bash -s -- '$UserName' '$Hostname' $quotedPackages"
+$command = "printf '%s' '$base64' | base64 --decode | bash -s -- '$UserName' '$Hostname' '$resolvedUserId' $quotedPackages"
 
-Write-Host "Provisioning '$UserName' and $($packages.Count) baseline packages..."
+Write-Host "Provisioning '$UserName' (UID $resolvedUserId) and $($packages.Count) baseline packages..."
 $provisioningCompleted = $false
 try {
     Invoke-Wsl -Arguments @('--distribution', $DistributionName, '--user', 'root', '--', 'bash', '-lc', $command)
@@ -158,7 +215,7 @@ try {
     }
 }
 try {
-    & (Join-Path $PSScriptRoot 'verify.ps1') -DistributionName $DistributionName -ExpectedUser $UserName -ExpectedHostname $Hostname -ExpectedVhdSize $VhdSize -ConfigPath $resolvedConfigPath
+    & (Join-Path $PSScriptRoot 'verify.ps1') -DistributionName $DistributionName -ExpectedUser $UserName -ExpectedUserId $resolvedUserId -ExpectedHostname $Hostname -ExpectedVhdSize $VhdSize -ConfigPath $resolvedConfigPath
 } finally {
     & (Join-Path $PSScriptRoot 'capture-state.ps1') -DistributionName $DistributionName -ConfigPath $resolvedConfigPath
 }

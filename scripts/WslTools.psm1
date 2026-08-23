@@ -10,6 +10,55 @@ function Test-LinuxUserName {
     return $Value -cmatch '^[a-z_][a-z0-9_-]{0,31}\z'
 }
 
+function Test-WslUserId {
+    param([AllowNull()] $Value)
+
+    $parsed = 0
+    return [int]::TryParse([string] $Value, [ref] $parsed) -and
+        $parsed -ge 1000 -and $parsed -le 60000
+}
+
+function Get-NextAvailableWslUserId {
+    param(
+        [int[]] $UsedUserIds = @(),
+        [AllowNull()] $RequestedUserId
+    )
+
+    $used = @{}
+    foreach ($userId in $UsedUserIds) {
+        if (Test-WslUserId $userId) { $used[[int] $userId] = $true }
+    }
+
+    if ($null -ne $RequestedUserId) {
+        if (-not (Test-WslUserId $RequestedUserId)) { throw 'The Linux user ID must be between 1000 and 60000.' }
+        $requested = [int] $RequestedUserId
+        if ($used.ContainsKey($requested)) { throw "Linux user ID $requested is already used by another WSL distribution." }
+        return $requested
+    }
+
+    for ($candidate = 1000; $candidate -le 60000; $candidate++) {
+        if (-not $used.ContainsKey($candidate)) { return $candidate }
+    }
+    throw 'No unused Linux user ID is available between 1000 and 60000.'
+}
+
+function Resolve-WslUserId {
+    param([AllowNull()] $CurrentUserId, [int[]] $UsedUserIds = @(), [AllowNull()] $RequestedUserId)
+
+    if ($null -ne $CurrentUserId) {
+        if (-not (Test-WslUserId $CurrentUserId)) { throw 'The existing Linux user ID must be between 1000 and 60000.' }
+        $current = [int] $CurrentUserId
+        if ($null -ne $RequestedUserId) {
+            if (-not (Test-WslUserId $RequestedUserId)) { throw 'The Linux user ID must be between 1000 and 60000.' }
+            if ([int] $RequestedUserId -ne $current) {
+                throw "The Linux user already has UID $current; refusing to migrate it automatically to UID $RequestedUserId."
+            }
+        }
+        return $current
+    }
+    return Get-NextAvailableWslUserId -UsedUserIds $UsedUserIds -RequestedUserId $RequestedUserId
+}
+
 function Test-WslHostName {
     param([AllowEmptyString()][string] $Value)
     return $Value -match '^[A-Za-z0-9][A-Za-z0-9.-]{0,62}\z'
@@ -125,6 +174,9 @@ function ConvertTo-BashLineEndings {
 Export-ModuleMember -Function @(
     'Test-WslDistributionName',
     'Test-LinuxUserName',
+    'Test-WslUserId',
+    'Get-NextAvailableWslUserId',
+    'Resolve-WslUserId',
     'Test-WslHostName',
     'Test-WslVhdSize',
     'ConvertFrom-WslVersionText',

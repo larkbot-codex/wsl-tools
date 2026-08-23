@@ -12,6 +12,23 @@ permissions:
   contents: read
 
 jobs:
+  windows-powershell:
+    if: github.event_name != 'schedule'
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install test tools
+        shell: powershell
+        run: |
+          Install-Module Pester -Scope CurrentUser -Force -RequiredVersion 5.7.1
+          Install-Module PSScriptAnalyzer -Scope CurrentUser -Force
+      - name: Analyze PowerShell
+        shell: powershell
+        run: Invoke-ScriptAnalyzer -Path . -Recurse -Severity Error
+      - name: Run Pester
+        shell: powershell
+        run: Invoke-Pester ./tests -CI
+
   powershell:
     if: github.event_name != 'schedule'
     runs-on: windows-latest
@@ -20,7 +37,7 @@ jobs:
       - name: Install test tools
         shell: pwsh
         run: |
-          Install-Module Pester -Scope CurrentUser -Force -MinimumVersion 5.5.0
+          Install-Module Pester -Scope CurrentUser -Force -RequiredVersion 5.7.1
           Install-Module PSScriptAnalyzer -Scope CurrentUser -Force
       - name: Analyze PowerShell
         shell: pwsh

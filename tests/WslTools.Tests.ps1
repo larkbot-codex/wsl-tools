@@ -41,6 +41,35 @@ Describe 'Core setting validation' {
         Test-LinuxUserName $_ | Should -BeFalse
     }
 
+    It 'accepts supported regular Linux user IDs' -ForEach @(1000, 1001, 60000) {
+        Test-WslUserId $_ | Should -BeTrue
+    }
+
+    It 'rejects unsafe Linux user IDs' -ForEach @($null, '', 999, 60001, 'user') {
+        Test-WslUserId $_ | Should -BeFalse
+    }
+
+    It 'selects the first UID not used by another WSL distribution' {
+        Get-NextAvailableWslUserId -UsedUserIds @(1000, 1002) | Should -Be 1001
+    }
+
+    It 'honors an available explicit UID' {
+        Get-NextAvailableWslUserId -UsedUserIds @(1000) -RequestedUserId 2000 | Should -Be 2000
+    }
+
+    It 'rejects an explicit UID used by another WSL distribution' {
+        { Get-NextAvailableWslUserId -UsedUserIds @(1000, 1001) -RequestedUserId 1001 } |
+            Should -Throw '*already used*'
+    }
+
+    It 'preserves an existing UID even when a legacy distribution uses the same UID' {
+        Resolve-WslUserId -CurrentUserId 1000 -UsedUserIds @(1000, 1001) | Should -Be 1000
+    }
+
+    It 'rejects an explicit migration of an existing user UID' {
+        { Resolve-WslUserId -CurrentUserId 1000 -RequestedUserId 1001 } | Should -Throw '*refusing to migrate*'
+    }
+
     It 'accepts a hostname' {
         Test-WslHostName 'work-ubuntu.example' | Should -BeTrue
     }
@@ -120,6 +149,18 @@ Describe 'WSL installation command construction' {
             Get-Content -Raw
         ($scripts -join "`n") | Should -Not -Match 'wsl(?:\.exe)?\s+--unregister'
     }
+
+    It 'captures state through the checked-in Bash script' {
+        $captureScript = Get-Content "$PSScriptRoot/../scripts/capture-state.ps1" -Raw
+        $captureScript | Should -Match '--cd\s+\$PSScriptRoot\s+--\s+bash\s+\./capture-state\.sh'
+        $captureScript | Should -Not -Match 'bash\s+-lc\s+\$command'
+    }
+
+    It 'passes the selected UID to useradd and refuses automatic UID migration' {
+        $provisionScript = Get-Content "$PSScriptRoot/../scripts/provision.sh" -Raw
+        $provisionScript | Should -Match 'useradd --uid "\$\{user_id\}"'
+        $provisionScript | Should -Match 'refusing automatic UID migration'
+    }
 }
 
 Describe 'Development package manifest' {
@@ -172,11 +213,6 @@ Describe 'Verification helpers' {
 
         $normalized | Should -Be "first`nsecond`nthird`nfourth"
         $normalized.Contains("`r") | Should -BeFalse
-    }
-
-    It 'normalizes the multiline state-capture payload before invoking Bash' {
-        Get-Content "$PSScriptRoot/../scripts/capture-state.ps1" -Raw |
-            Should -Match '\$command = ConvertTo-BashLineEndings \$command'
     }
 
     It 'keeps generated state inventories out of source control' {
