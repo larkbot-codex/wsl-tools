@@ -153,6 +153,13 @@ Describe 'WSL installation command construction' {
         ($scripts -join "`n") | Should -Not -Match 'wsl(?:\.exe)?\s+--unregister'
     }
 
+    It 'does not change the default WSL distribution' {
+        $scripts = Get-ChildItem "$PSScriptRoot/.." -File -Recurse |
+            Where-Object { $_.Extension -in @('.cmd', '.ps1', '.psm1') } |
+            Get-Content -Raw
+        ($scripts -join "`n") | Should -Not -Match 'wsl(?:\.exe)?\s+--set-default(?:\s|$)'
+    }
+
     It 'captures state through the checked-in Bash script' {
         $captureScript = Get-Content "$PSScriptRoot/../scripts/capture-state.ps1" -Raw
         $captureScript | Should -Match '--cd\s+\$PSScriptRoot\s+--\s+bash\s+\./capture-state\.sh'
@@ -163,12 +170,6 @@ Describe 'WSL installation command construction' {
         $provisionScript = Get-Content "$PSScriptRoot/../scripts/provision.sh" -Raw
         $provisionScript | Should -Match 'useradd --uid "\$\{user_id\}"'
         $provisionScript | Should -Match 'refusing automatic UID migration'
-    }
-    It 'does not change the default WSL distribution' {
-        $scripts = Get-ChildItem "$PSScriptRoot/.." -File -Recurse |
-            Where-Object { $_.Extension -in @('.cmd', '.ps1', '.psm1') } |
-            Get-Content -Raw
-        ($scripts -join "`n") | Should -Not -Match 'wsl(?:\.exe)?\s+--set-default(?:\s|$)'
     }
 }
 
