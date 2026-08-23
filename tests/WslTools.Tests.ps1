@@ -41,6 +41,27 @@ Describe 'Core setting validation' {
         Test-LinuxUserName $_ | Should -BeFalse
     }
 
+    It 'accepts supported regular Linux user IDs' -ForEach @(1000, 1001, 60000) {
+        Test-WslUserId $_ | Should -BeTrue
+    }
+
+    It 'rejects unsafe Linux user IDs' -ForEach @($null, '', 999, 60001, 'user') {
+        Test-WslUserId $_ | Should -BeFalse
+    }
+
+    It 'selects the first UID not used by another WSL distribution' {
+        Get-NextAvailableWslUserId -UsedUserIds @(1000, 1002) | Should -Be 1001
+    }
+
+    It 'honors an available explicit UID' {
+        Get-NextAvailableWslUserId -UsedUserIds @(1000) -RequestedUserId 2000 | Should -Be 2000
+    }
+
+    It 'rejects an explicit UID used by another WSL distribution' {
+        { Get-NextAvailableWslUserId -UsedUserIds @(1000, 1001) -RequestedUserId 1001 } |
+            Should -Throw '*already used*'
+    }
+
     It 'accepts a hostname' {
         Test-WslHostName 'work-ubuntu.example' | Should -BeTrue
     }
@@ -125,6 +146,12 @@ Describe 'WSL installation command construction' {
         $captureScript = Get-Content "$PSScriptRoot/../scripts/capture-state.ps1" -Raw
         $captureScript | Should -Match '--cd\s+\$PSScriptRoot\s+--\s+bash\s+\./capture-state\.sh'
         $captureScript | Should -Not -Match 'bash\s+-lc\s+\$command'
+    }
+
+    It 'passes the selected UID to useradd and refuses automatic UID migration' {
+        $provisionScript = Get-Content "$PSScriptRoot/../scripts/provision.sh" -Raw
+        $provisionScript | Should -Match 'useradd --uid "\$\{user_id\}"'
+        $provisionScript | Should -Match 'refusing automatic UID migration'
     }
 }
 

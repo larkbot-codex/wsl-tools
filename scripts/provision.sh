@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-user_name="${1:?usage: provision.sh USER HOSTNAME [PACKAGE ...]}"
-host_name="${2:?usage: provision.sh USER HOSTNAME [PACKAGE ...]}"
-shift 2
+user_name="${1:?usage: provision.sh USER HOSTNAME USER_ID [PACKAGE ...]}"
+host_name="${2:?usage: provision.sh USER HOSTNAME USER_ID [PACKAGE ...]}"
+user_id="${3:?usage: provision.sh USER HOSTNAME USER_ID [PACKAGE ...]}"
+shift 3
 packages=("$@")
 
 for package in "${packages[@]}"; do
@@ -26,13 +27,22 @@ if [[ ! ${host_name} =~ ^[A-Za-z0-9][A-Za-z0-9.-]{0,62}$ ]]; then
     echo "invalid hostname: ${host_name}" >&2
     exit 1
 fi
+if [[ ! ${user_id} =~ ^[0-9]+$ ]] || ((user_id < 1000 || user_id > 60000)); then
+    echo "invalid Linux user ID: ${user_id}" >&2
+    exit 1
+fi
 if ! command -v sudo >/dev/null 2>&1; then
     echo 'the Ubuntu image must provide sudo' >&2
     exit 1
 fi
 
 if ! id "${user_name}" >/dev/null 2>&1; then
-    useradd --create-home --groups sudo --shell /bin/bash "${user_name}"
+    useradd --uid "${user_id}" --create-home --groups sudo --shell /bin/bash "${user_name}"
+fi
+actual_user_id="$(id -u "${user_name}")"
+if [[ ${actual_user_id} != "${user_id}" ]]; then
+    echo "existing user ${user_name} has UID ${actual_user_id}; refusing automatic UID migration" >&2
+    exit 1
 fi
 usermod --append --groups sudo "${user_name}"
 passwd --lock "${user_name}" >/dev/null
