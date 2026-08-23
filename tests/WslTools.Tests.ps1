@@ -182,11 +182,11 @@ Describe 'Verification helpers' {
 
     It 'captures setup state even when verification throws' {
         $setup = Get-Content "$PSScriptRoot/../scripts/setup.ps1" -Raw
-        $setup | Should -Match "(?s)try\s*\{\s*& \(Join-Path \$PSScriptRoot 'verify\.ps1'\).*?\}\s*finally\s*\{\s*& \(Join-Path \$PSScriptRoot 'capture-state\.ps1'\)"
+        $setup | Should -Match '(?s)try\s*\{\s*& \(Join-Path \$PSScriptRoot ''verify\.ps1''\).*?\}\s*finally\s*\{\s*& \(Join-Path \$PSScriptRoot ''capture-state\.ps1''\)'
     }
 
     It 'captures synchronization state even when verification throws' {
         $sync = Get-Content "$PSScriptRoot/../scripts/sync-packages.ps1" -Raw
-        $sync | Should -Match "(?s)try\s*\{\s*& \(Join-Path \$PSScriptRoot 'verify\.ps1'\).*?\}\s*finally\s*\{\s*& \(Join-Path \$PSScriptRoot 'capture-state\.ps1'\)"
+        $sync | Should -Match '(?s)try\s*\{\s*& \(Join-Path \$PSScriptRoot ''verify\.ps1''\).*?\}\s*finally\s*\{\s*& \(Join-Path \$PSScriptRoot ''capture-state\.ps1''\)'
     }
 }
