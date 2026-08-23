@@ -120,6 +120,12 @@ Describe 'WSL installation command construction' {
             Get-Content -Raw
         ($scripts -join "`n") | Should -Not -Match 'wsl(?:\.exe)?\s+--unregister'
     }
+
+    It 'captures state through the checked-in Bash script' {
+        $captureScript = Get-Content "$PSScriptRoot/../scripts/capture-state.ps1" -Raw
+        $captureScript | Should -Match '--cd\s+\$PSScriptRoot\s+--\s+bash\s+\./capture-state\.sh'
+        $captureScript | Should -Not -Match 'bash\s+-lc\s+\$command'
+    }
 }
 
 Describe 'Development package manifest' {
@@ -172,11 +178,6 @@ Describe 'Verification helpers' {
 
         $normalized | Should -Be "first`nsecond`nthird`nfourth"
         $normalized.Contains("`r") | Should -BeFalse
-    }
-
-    It 'normalizes the multiline state-capture payload before invoking Bash' {
-        Get-Content "$PSScriptRoot/../scripts/capture-state.ps1" -Raw |
-            Should -Match '\$command = ConvertTo-BashLineEndings \$command'
     }
 
     It 'keeps generated state inventories out of source control' {
