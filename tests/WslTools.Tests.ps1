@@ -119,6 +119,12 @@ Describe 'WSL installation command construction' {
             Get-Content -Raw
         ($scripts -join "`n") | Should -Not -Match 'wsl(?:\.exe)?\s+--set-default(?:\s|$)'
     }
+
+    It 'captures state through the checked-in Bash script' {
+        $captureScript = Get-Content "$PSScriptRoot/../scripts/capture-state.ps1" -Raw
+        $captureScript | Should -Match '--cd\s+\$PSScriptRoot\s+--\s+bash\s+\./capture-state\.sh'
+        $captureScript | Should -Not -Match 'bash\s+-lc\s+\$command'
+    }
 }
 
 Describe 'Fresh Windows host bootstrap' {
