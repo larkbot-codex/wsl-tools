@@ -2,6 +2,7 @@
 param(
     [string] $DistributionName,
     [string] $ExpectedUser,
+    [Nullable[int]] $ExpectedUserId,
     [string] $ExpectedHostname,
     [string] $ExpectedVhdSize,
     [string] $ConfigPath
@@ -20,6 +21,7 @@ if (-not $ExpectedHostname) { $ExpectedHostname = $config.Hostname }
 if (-not $ExpectedVhdSize) { $ExpectedVhdSize = $config.VhdSize }
 if (-not (Test-WslDistributionName $DistributionName)) { throw 'Invalid distribution name.' }
 if (-not (Test-LinuxUserName $ExpectedUser)) { throw 'Invalid expected user.' }
+if ($PSBoundParameters.ContainsKey('ExpectedUserId') -and -not (Test-WslUserId $ExpectedUserId)) { throw 'Invalid expected user ID.' }
 if (-not (Test-WslHostName $ExpectedHostname)) { throw 'Invalid expected hostname.' }
 if (-not (Test-WslVhdSize $ExpectedVhdSize)) { throw 'Invalid expected VHD size.' }
 
@@ -45,6 +47,9 @@ Test-InDistro 'WSL 2 kernel' 'grep -qi microsoft /proc/sys/kernel/osrelease'
 Test-InDistro 'systemd is PID 1' 'test $(cat /proc/1/comm) = systemd'
 Test-InDistro 'systemd user manager works' 'systemctl --user is-active --quiet default.target'
 Test-InDistro 'Default user' "test `$(id -un) = '$ExpectedUser'"
+if ($PSBoundParameters.ContainsKey('ExpectedUserId')) {
+    Test-InDistro 'Unique Linux user ID' "test `$(id -u) = '$ExpectedUserId'"
+}
 Test-InDistro 'Passwordless sudo' 'sudo -n true'
 Test-InDistro 'Baseline packages installed' "dpkg-query -W $quotedPackages >/dev/null"
 Test-InDistro 'Rootless Podman works' 'podman info >/dev/null'

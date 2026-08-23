@@ -1,165 +1,163 @@
 # Clean-machine acceptance
 
-Run this checklist on an AMD64 Windows machine before a release. Hosted CI
-checks the scripts but cannot prove the full WSL lifecycle, systemd user session,
-or installation-time VHD behavior.
+Complete this checklist on an AMD64 Windows machine before publishing a
+release. Hosted CI validates the scripts and bundle, but cannot prove feature
+enablement, restart behavior, systemd sessions, or installation-time VHD limits.
 
-## Preconditions
+## Release candidate
 
-- Use an AMD64/X64 Windows machine on which WSL can be enabled.
-- Start PowerShell as a user allowed to install and run WSL distributions.
-- Clone this repository to a local Windows filesystem.
-- Choose a new distribution name. The setup command intentionally refuses to
-  replace an existing distribution.
-- Record the commit under test and any intentional config changes.
-
-The commands below use these example settings:
+Record the Windows version, architecture, commit SHA, release tag, and whether
+WSL or any distributions were installed before the test. If an existing default
+distribution is present, record it:
 
 ```powershell
-$Distro = 'WslTools-Acceptance'
-$LinuxUser = 'developer'
-$LinuxHost = 'wsl-acceptance'
-$VhdMaximum = '50GB'
+wsl.exe --status
+wsl.exe --version
+wsl.exe --list --verbose
 ```
 
-Do not reuse a distribution that contains data you care about.
+Build or download `wsl-tools-<version>-windows.zip` and its `.sha256` file.
+Confirm the hash, then extract the ZIP into a path containing a space. Run every
+remaining Windows command from that extracted bundle; do not install Git,
+GitHub CLI, or PowerShell 7 on the Windows host for this test.
 
-## 1. Check the host and repository
+## 1. Validate the bundle
 
-From the repository root:
+Confirm the archive contains only the release surface:
+
+- `Start-WslTools.cmd`, `bootstrap.ps1`, `config.psd1`, and `packages.txt`
+- `scripts/`, `docs/`, and `state/README.md`
+- `README.md` and `LICENSE`
+
+Confirm it does not contain `.git`, tests, workflow files, downloaded images,
+state inventories, credentials, or development artifacts.
+
+## 2. Exercise guided cancellation
+
+Run the launcher without flags:
 
 ```powershell
-pwsh -NoProfile -File ./scripts/check-prerequisites.ps1
-Invoke-Pester ./tests -CI
-Invoke-ScriptAnalyzer -Path . -Recurse -Severity Error
+.\Start-WslTools.cmd
 ```
 
-Acceptance requires a passing prerequisite report, Pester suite, and
-PSScriptAnalyzer run. On a Linux runner or inside WSL, also run:
+If WSL host preparation is proposed, answer `n` and confirm that no host feature
+or distribution changed. On an already prepared host, enter disposable values,
+answer `n` at the distribution plan, and confirm no distribution was created.
+
+## 3. Prepare a fresh Windows host
+
+On a machine where WSL is not enabled, run:
+
+```powershell
+.\Start-WslTools.cmd -DistributionName codex -UserName thelarkbot -Hostname codex -VhdSize 50GB -NonInteractive
+```
+
+Confirm that UAC launches a separate elevated Windows PowerShell process and
+that the host command is exactly `wsl --install --no-distribution`. The elevated
+process must not register a distribution. If requested, restart Windows and run
+the identical command again from the original Windows account.
+
+On a host with an old Store WSL version, repeat the test and confirm the elevated
+action is `wsl --update`. Unsupported Windows builds and non-X64 hosts must fail
+before host or distribution changes.
+
+## 4. Create both environments
+
+After the `codex` command succeeds, run:
+
+```powershell
+.\Start-WslTools.cmd -DistributionName claude -UserName thelarklan -Hostname claude -VhdSize 50GB -NonInteractive
+```
+
+Both commands must verify the pinned Ubuntu image, provision the locked user and
+passwordless sudo, install the package manifest, terminate once to apply WSL
+settings, pass verification, and write `state/codex.txt` and
+`state/claude.txt`. Confirm the second command reused the verified cached image.
+
+Confirm `id -u thelarkbot` reports 1000 in `codex`, `id -u thelarklan`
+reports 1001 in `claude`, and both systemd user managers remain active while
+both distributions are running. Record any pre-existing regular-user UIDs that
+changed the automatically selected values.
+
+Confirm that repeating either initial-install command fails closed with an
+existing-distribution message. It must not overwrite, reset, unregister, or
+implicitly resume the distribution.
+
+## 5. Verify identity and restart behavior
+
+Terminate and restart each distribution:
+
+```powershell
+wsl.exe --terminate codex
+wsl.exe --terminate claude
+wsl.exe --distribution codex --cd ~
+wsl.exe --distribution claude --cd ~
+```
+
+Inside each environment, confirm the expected user and hostname, then run:
 
 ```bash
-bash -n scripts/*.sh
-shellcheck scripts/*.sh
-```
-
-## 2. Exercise the guided interface
-
-Run the setup command without setting flags, enter the four example values, and
-answer `n` at the confirmation prompt:
-
-```powershell
-pwsh -NoProfile -File ./scripts/setup.ps1
-```
-
-Confirm that the plan includes the distribution, Ubuntu AMD64 image, locked
-user/passwordless-sudo policy, hostname, and VHD maximum. Confirm that cancelling
-does not create the distribution:
-
-```powershell
-wsl.exe --list --quiet
-```
-
-## 3. Install non-interactively
-
-```powershell
-pwsh -NoProfile -File ./scripts/setup.ps1 `
-  -DistributionName $Distro `
-  -UserName $LinuxUser `
-  -Hostname $LinuxHost `
-  -VhdSize $VhdMaximum `
-  -NonInteractive
-```
-
-The command must verify the pinned image, create the distribution, provision the
-user and package manifest, terminate it once to apply WSL settings, pass every
-verification check, and write `state/$Distro.txt`.
-
-Confirm that running the initial-install command again fails closed with an
-existing-distribution error. It must not overwrite, reset, or unregister the
-distribution.
-
-## 4. Verify restart behavior
-
-Close shells that use the acceptance distribution, then restart it:
-
-```powershell
-wsl.exe --terminate $Distro
-wsl.exe --distribution $Distro --cd '~'
-```
-
-Inside the new Linux shell, run:
-
-```bash
-id -un
-hostname
+id -u
 systemctl --user is-active default.target
 sudo -n true
-cd /mnt/c/path/to/wsl-tools
 bash scripts/verify.sh
 ```
 
-The identity and hostname must match the chosen values, the systemd user target
-must be `active`, passwordless sudo must succeed, and every Linux-side check must
-pass. Replace the example repository path with its mounted Windows path, then
-exit the Linux shell before continuing.
+Confirm systemd is active, passwordless sudo succeeds, the package manifest is
+complete, rootless Podman works, and the filesystem maximum does not exceed
+50GB.
 
-## 5. Exercise recovery and reconciliation
+## 6. Exercise recovery and read-only verification
 
-Re-run provisioning explicitly through the idempotent recovery path:
-
-```powershell
-pwsh -NoProfile -File ./scripts/setup.ps1 `
-  -DistributionName $Distro `
-  -UserName $LinuxUser `
-  -Hostname $LinuxHost `
-  -VhdSize $VhdMaximum `
-  -Resume `
-  -NonInteractive
-```
-
-Then exercise package reconciliation and read-only verification:
+Run explicit recovery for both environments:
 
 ```powershell
-pwsh -NoProfile -File ./scripts/sync-packages.ps1 `
-  -DistributionName $Distro `
-  -ExpectedUser $LinuxUser `
-  -ExpectedHostname $LinuxHost `
-  -ExpectedVhdSize $VhdMaximum
-
-pwsh -NoProfile -File ./scripts/setup.ps1 `
-  -DistributionName $Distro `
-  -UserName $LinuxUser `
-  -Hostname $LinuxHost `
-  -VhdSize $VhdMaximum `
-  -VerifyOnly `
-  -NonInteractive
+.\Start-WslTools.cmd -DistributionName codex -UserName thelarkbot -Hostname codex -VhdSize 50GB -Resume -NonInteractive
+.\Start-WslTools.cmd -DistributionName claude -UserName thelarklan -Hostname claude -VhdSize 50GB -Resume -NonInteractive
 ```
 
-All three commands must pass. Reconciliation may install missing manifest
-packages, but it must not uninstall packages absent from the manifest.
+Then run read-only verification:
 
-## 6. Preserve evidence
+```powershell
+.\Start-WslTools.cmd -DistributionName codex -UserName thelarkbot -Hostname codex -VhdSize 50GB -VerifyOnly -NonInteractive
+.\Start-WslTools.cmd -DistributionName claude -UserName thelarklan -Hostname claude -VhdSize 50GB -VerifyOnly -NonInteractive
+```
 
-Record the following in the release or pull request:
+All commands must pass. Verify-only must not reconcile packages or write state.
 
-- Windows version and WSL version
-- machine architecture
-- commit SHA and effective configuration
-- Pester, PSScriptAnalyzer, Bash syntax, and ShellCheck results
-- initial setup, restart, resume, synchronization, and verify-only results
-- the generated inventory path (review it for sensitive local details before
-  attaching it anywhere)
-- any failure, workaround, or deviation from this checklist
+Confirm resume preserved both existing UIDs and did not rewrite ownership.
+
+## 7. Confirm host safety
+
+If a default distribution existed before acceptance, confirm it is unchanged.
+If there was no previous distribution, record which distribution WSL naturally
+selected as the default. Inspect the executable scripts and captured command
+evidence to confirm neither `wsl --set-default` nor `wsl --unregister` ran.
+
+## 8. Preserve evidence
+
+Record in the release or pull request:
+
+- Windows and WSL versions, architecture, commit SHA, tag, ZIP hash, and config
+- Pester results under Windows PowerShell 5.1 and PowerShell 7
+- PSScriptAnalyzer, Bash syntax, and ShellCheck results
+- bundle extraction path and contents
+- host install/update, UAC, restart/rerun, cache reuse, setup, resume, restart,
+  and verify-only results
+- generated inventory paths, reviewed for sensitive local details
+- the default distribution before and after the run
+- every failure, workaround, or deviation
 
 ## Optional manual cleanup
 
-Keeping the acceptance distribution is the safest default. If a human decides
-it is disposable, export it first:
+Keeping the distributions is the safest default. If a human decides one is
+disposable, export it first:
 
 ```powershell
-wsl.exe --export $Distro "$Distro-backup.tar"
+wsl.exe --export codex .\codex-backup.tar
+wsl.exe --export claude .\claude-backup.tar
 ```
 
-WSL distribution unregistration permanently deletes that distribution and its
-filesystem. This project never automates it. Perform any cleanup manually only
-after checking the exact distribution name and confirming the export is usable.
+Unregistration permanently deletes the distribution and its filesystem. This
+project never automates that action; perform any cleanup manually only after
+checking the exact name and confirming the export is usable.

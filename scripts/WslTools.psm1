@@ -10,6 +10,38 @@ function Test-LinuxUserName {
     return $Value -cmatch '^[a-z_][a-z0-9_-]{0,31}$'
 }
 
+function Test-WslUserId {
+    param([AllowNull()] $Value)
+
+    $parsed = 0
+    return [int]::TryParse([string] $Value, [ref] $parsed) -and
+        $parsed -ge 1000 -and $parsed -le 60000
+}
+
+function Get-NextAvailableWslUserId {
+    param(
+        [int[]] $UsedUserIds = @(),
+        [AllowNull()] $RequestedUserId
+    )
+
+    $used = @{}
+    foreach ($userId in $UsedUserIds) {
+        if (Test-WslUserId $userId) { $used[[int] $userId] = $true }
+    }
+
+    if ($null -ne $RequestedUserId) {
+        if (-not (Test-WslUserId $RequestedUserId)) { throw 'The Linux user ID must be between 1000 and 60000.' }
+        $requested = [int] $RequestedUserId
+        if ($used.ContainsKey($requested)) { throw "Linux user ID $requested is already used by another WSL distribution." }
+        return $requested
+    }
+
+    for ($candidate = 1000; $candidate -le 60000; $candidate++) {
+        if (-not $used.ContainsKey($candidate)) { return $candidate }
+    }
+    throw 'No unused Linux user ID is available between 1000 and 60000.'
+}
+
 function Test-WslHostName {
     param([AllowEmptyString()][string] $Value)
     return $Value -match '^[A-Za-z0-9][A-Za-z0-9.-]{0,62}$'
@@ -116,9 +148,97 @@ function ConvertTo-WslByteSize {
     return $sizeValue * $multiplier
 }
 
+function Get-WslHostState {
+    param(
+        [Parameter(Mandatory)][bool] $CommandAvailable,
+        [Parameter(Mandatory)][int] $VersionExitCode,
+        [AllowEmptyString()][string] $VersionText,
+        [Parameter(Mandatory)][int] $StatusExitCode,
+        [AllowEmptyString()][string] $InstallHelp,
+        [Parameter(Mandatory)][version] $MinimumVersion,
+        [Parameter(Mandatory)][bool] $VirtualMachinePlatformEnabled,
+        [Parameter(Mandatory)][bool] $RestartPending
+    )
+
+    if (-not $CommandAvailable -or $VersionExitCode -ne 0) {
+        return 'Absent'
+    }
+    if (-not $VirtualMachinePlatformEnabled) {
+        return 'Absent'
+    }
+    if ($RestartPending) {
+        return 'RestartRequired'
+    }
+
+    $version = ConvertFrom-WslVersionText $VersionText
+    if (-not $version -or $version -lt $MinimumVersion) {
+        return 'UpdateRequired'
+    }
+    if (-not (Test-WslInstallHelp $InstallHelp)) {
+        return 'UpdateRequired'
+    }
+    if ($StatusExitCode -ne 0) {
+        return 'Absent'
+    }
+
+    return 'Ready'
+}
+
+function Get-WslHostActionArguments {
+    param(
+        [Parameter(Mandatory)]
+        [ValidateSet('Install', 'Update')]
+        [string] $Action
+    )
+
+    if ($Action -eq 'Install') {
+        return @('--install', '--no-distribution')
+    }
+    return @('--update')
+}
+
+function Get-WslBootstrapAction {
+    param(
+        [Parameter(Mandatory)]
+        [ValidateSet('Ready', 'Absent', 'UpdateRequired', 'RestartRequired')]
+        [string] $HostState,
+        [switch] $VerifyOnly
+    )
+
+    if ($HostState -eq 'Ready') {
+        return 'Provision'
+    }
+    if ($VerifyOnly) {
+        return 'ReadOnlyFailure'
+    }
+    if ($HostState -eq 'RestartRequired') {
+        return 'Restart'
+    }
+    if ($HostState -eq 'Absent') {
+        return 'Install'
+    }
+    return 'Update'
+}
+
+function Get-ElevatedBootstrapArguments {
+    param(
+        [Parameter(Mandatory)][string] $ScriptPath,
+        [Parameter(Mandatory)]
+        [ValidateSet('Install', 'Update')]
+        [string] $HostAction
+    )
+
+    $escapedPath = $ScriptPath.Replace("'", "''")
+    $command = "& '$escapedPath' -HostAction '$HostAction'"
+    $encodedCommand = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($command))
+    return @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', $encodedCommand)
+}
+
 Export-ModuleMember -Function @(
     'Test-WslDistributionName',
     'Test-LinuxUserName',
+    'Test-WslUserId',
+    'Get-NextAvailableWslUserId',
     'Test-WslHostName',
     'Test-WslVhdSize',
     'ConvertFrom-WslVersionText',
@@ -126,5 +246,9 @@ Export-ModuleMember -Function @(
     'Get-WslInstallArguments',
     'Test-WslInstallHelp',
     'Read-WslPackageList',
-    'ConvertTo-WslByteSize'
+    'ConvertTo-WslByteSize',
+    'Get-WslHostState',
+    'Get-WslHostActionArguments',
+    'Get-WslBootstrapAction',
+    'Get-ElevatedBootstrapArguments'
 )
