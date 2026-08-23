@@ -66,6 +66,21 @@ The supplied image must match the pinned SHA-256.
 
 The setup command refuses to overwrite an existing distribution.
 
+If the initial provisioning step was interrupted after the distribution was
+created, repeat the effective settings and resume explicitly:
+
+```powershell
+./scripts/setup.ps1 -DistributionName Work-Ubuntu -UserName developer `
+  -Hostname work-ubuntu -VhdSize 50GB -Resume -NonInteractive
+```
+
+Verify an existing environment without reconciling packages or writing state:
+
+```powershell
+./scripts/setup.ps1 -DistributionName Work-Ubuntu -UserName developer `
+  -Hostname work-ubuntu -VhdSize 50GB -VerifyOnly
+```
+
 ## Development packages
 
 [`packages.txt`](packages.txt) is the baseline APT manifest. It includes Git and
@@ -87,6 +102,23 @@ bash scripts/sync-packages.sh
 
 Removing a manifest entry does not uninstall the package. Package removal stays
 explicit so this project does not unexpectedly delete dependencies.
+
+## Verification and state
+
+Setup and package synchronization verify the OS, architecture, configured
+identity, complete package manifest, rootless Podman, project directory, and
+filesystem maximum. An unavailable systemd user manager is reported as a
+warning because Podman can fall back to `cgroupfs`; it does not make an
+otherwise usable environment fail verification. State capture runs even if a
+required verification check fails, writing an ignored inventory under `state/`
+with exact package and selected tool versions for diagnosis.
+
+From inside WSL, the equivalent read-only checks and capture are:
+
+```bash
+bash scripts/verify.sh
+bash scripts/capture-state.sh
+```
 
 ## Verification
 
@@ -115,5 +147,4 @@ irreversibly deletes that distribution's data.
 
 ## Deferred
 
-- resume, state capture, and verification workflows
 - full clean-machine acceptance documentation

@@ -2,22 +2,22 @@ Set-StrictMode -Version Latest
 
 function Test-WslDistributionName {
     param([AllowEmptyString()][string] $Value)
-    return $Value -match '^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$'
+    return $Value -match '^[A-Za-z0-9][A-Za-z0-9._-]{0,63}\z'
 }
 
 function Test-LinuxUserName {
     param([AllowEmptyString()][string] $Value)
-    return $Value -cmatch '^[a-z_][a-z0-9_-]{0,31}$'
+    return $Value -cmatch '^[a-z_][a-z0-9_-]{0,31}\z'
 }
 
 function Test-WslHostName {
     param([AllowEmptyString()][string] $Value)
-    return $Value -match '^[A-Za-z0-9][A-Za-z0-9.-]{0,62}$'
+    return $Value -match '^[A-Za-z0-9][A-Za-z0-9.-]{0,62}\z'
 }
 
 function Test-WslVhdSize {
     param([AllowEmptyString()][string] $Value)
-    return $Value -match '^\d+(B|M|MB|G|GB|T|TB)$'
+    return $Value -match '^\d+(B|M|MB|G|GB|T|TB)\z'
 }
 
 function ConvertFrom-WslVersionText {
@@ -52,8 +52,8 @@ function Test-WslConfiguration {
     foreach ($key in @('FileName', 'Url', 'Sha256')) {
         if (-not $image.ContainsKey($key)) { return $false }
     }
-    if ($image.FileName -notmatch '^ubuntu-[0-9.]+-wsl-amd64\.wsl$') { return $false }
-    if ($image.Sha256 -notmatch '^[a-f0-9]{64}$') { return $false }
+    if ($image.FileName -notmatch '^ubuntu-[0-9.]+-wsl-amd64\.wsl\z') { return $false }
+    if ($image.Sha256 -notmatch '^[a-f0-9]{64}\z') { return $false }
 
     $imageUri = $null
     if (-not [uri]::TryCreate([string] $image.Url, [UriKind]::Absolute, [ref] $imageUri)) { return $false }
@@ -94,11 +94,32 @@ function Read-WslPackageList {
         Where-Object { $_ })
     if (-not $packages.Count) { throw "$Path contains no packages." }
     foreach ($package in $packages) {
-        if ($package -notmatch '^[A-Za-z0-9][A-Za-z0-9._+:-]*$') {
+        if ($package -notmatch '^[A-Za-z0-9][A-Za-z0-9._+:-]*\z') {
             throw "Invalid package name '$package'."
         }
     }
     return $packages
+}
+
+function ConvertTo-WslByteSize {
+    param([Parameter(Mandatory)][string] $Value)
+
+    if (-not (Test-WslVhdSize $Value)) { throw "Invalid WSL size '$Value'." }
+    $Value -match '^(\d+)(B|M|MB|G|GB|T|TB)\z' | Out-Null
+    $sizeValue = [uint64] $Matches[1]
+    $multiplier = switch ($Matches[2]) {
+        'B' { [uint64] 1 }
+        { $_ -in 'M', 'MB' } { [uint64] 1MB }
+        { $_ -in 'G', 'GB' } { [uint64] 1GB }
+        { $_ -in 'T', 'TB' } { [uint64] 1TB }
+    }
+    return $sizeValue * $multiplier
+}
+
+function ConvertTo-BashLineEndings {
+    param([AllowEmptyString()][string] $Value)
+
+    return $Value -replace "`r`n", "`n" -replace "`r", "`n"
 }
 
 Export-ModuleMember -Function @(
@@ -110,5 +131,7 @@ Export-ModuleMember -Function @(
     'Test-WslConfiguration',
     'Get-WslInstallArguments',
     'Test-WslInstallHelp',
-    'Read-WslPackageList'
+    'Read-WslPackageList',
+    'ConvertTo-WslByteSize',
+    'ConvertTo-BashLineEndings'
 )

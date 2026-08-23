@@ -56,6 +56,15 @@ Describe 'Core setting validation' {
     It 'rejects unsupported VHD sizes' -ForEach @('', '50', '50GiB', '-1GB') {
         Test-WslVhdSize $_ | Should -BeFalse
     }
+
+    It 'rejects trailing line endings instead of passing values Bash will reject' -ForEach @(
+        @{ Validator = 'Test-WslDistributionName'; Value = "Work-Ubuntu`n" }
+        @{ Validator = 'Test-LinuxUserName'; Value = "developer`n" }
+        @{ Validator = 'Test-WslHostName'; Value = "work-ubuntu`n" }
+        @{ Validator = 'Test-WslVhdSize'; Value = "50GB`n" }
+    ) {
+        & $Validator $Value | Should -BeFalse
+    }
 }
 
 Describe 'WSL version parsing' {
@@ -63,8 +72,8 @@ Describe 'WSL version parsing' {
         'WSL version: 2.7.12.0',
         'WSL-Version: 2.7.12.0',
         'Version WSL : 2.7.12.0',
-        'WSL のバージョン: 2.7.12.0',
-        'Versión de WSL: 2.7.12.0'
+        ('WSL ' + [char]0x306e + [char]0x30d0 + [char]0x30fc + [char]0x30b8 + [char]0x30e7 + [char]0x30f3 + ': 2.7.12.0'),
+        ('Versi' + [char]0x00f3 + 'n de WSL: 2.7.12.0')
     ) {
         ConvertFrom-WslVersionText "$_`nKernel version: 6.6.87.2" |
             Should -Be ([version] '2.7.12')
@@ -142,5 +151,54 @@ Describe 'Development package manifest' {
         $provisioner | Should -Match 'for package in "\$\{packages\[@\]\}"'
         $provisioner | Should -Match '\[\[ ! \$\{package\} =~ \^\[A-Za-z0-9\]'
         $provisioner | Should -Match 'invalid package name:'
+    }
+}
+
+Describe 'Verification helpers' {
+    It 'converts supported VHD units to bytes' -ForEach @(
+        @{ Value = '50GB'; Bytes = 53687091200 }
+        @{ Value = '1024MB'; Bytes = 1073741824 }
+        @{ Value = '1TB'; Bytes = 1099511627776 }
+    ) {
+        ConvertTo-WslByteSize $Value | Should -Be $Bytes
+    }
+
+    It 'rejects an unsupported VHD unit' {
+        { ConvertTo-WslByteSize '50GiB' } | Should -Throw '*Invalid WSL size*'
+    }
+
+    It 'normalizes Windows and lone carriage-return line endings for Bash' {
+        $normalized = ConvertTo-BashLineEndings "first`r`nsecond`rthird`nfourth"
+
+        $normalized | Should -Be "first`nsecond`nthird`nfourth"
+        $normalized.Contains("`r") | Should -BeFalse
+    }
+
+    It 'normalizes the multiline state-capture payload before invoking Bash' {
+        Get-Content "$PSScriptRoot/../scripts/capture-state.ps1" -Raw |
+            Should -Match '\$command = ConvertTo-BashLineEndings \$command'
+    }
+
+    It 'keeps generated state inventories out of source control' {
+        Get-Content "$PSScriptRoot/../.gitignore" | Should -Contain 'state/*.txt'
+    }
+
+    It 'treats an unavailable systemd user manager as a warning' {
+        $verification = Get-Content "$PSScriptRoot/../scripts/verify.ps1" -Raw
+        $verification | Should -Match "systemd user manager works'.*-WarningOnly"
+        $verification | Should -Match 'Rootless Podman will fall back to cgroupfs'
+        $linuxVerification = Get-Content "$PSScriptRoot/../scripts/verify.sh" -Raw
+        $linuxVerification | Should -Match "warn_check 'systemd user manager works'"
+        $linuxVerification | Should -Match 'Rootless Podman will fall back to cgroupfs'
+    }
+
+    It 'captures setup state even when verification throws' {
+        $setup = Get-Content "$PSScriptRoot/../scripts/setup.ps1" -Raw
+        $setup | Should -Match '(?s)try\s*\{\s*& \(Join-Path \$PSScriptRoot ''verify\.ps1''\).*?\}\s*finally\s*\{\s*& \(Join-Path \$PSScriptRoot ''capture-state\.ps1''\)'
+    }
+
+    It 'captures synchronization state even when verification throws' {
+        $sync = Get-Content "$PSScriptRoot/../scripts/sync-packages.ps1" -Raw
+        $sync | Should -Match '(?s)try\s*\{\s*& \(Join-Path \$PSScriptRoot ''verify\.ps1''\).*?\}\s*finally\s*\{\s*& \(Join-Path \$PSScriptRoot ''capture-state\.ps1''\)'
     }
 }
