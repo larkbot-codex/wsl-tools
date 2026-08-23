@@ -143,8 +143,20 @@ $quotedPackages = @($packages | ForEach-Object { "'$_'" }) -join ' '
 $command = "printf '%s' '$base64' | base64 --decode | bash -s -- '$UserName' '$Hostname' $quotedPackages"
 
 Write-Host "Provisioning '$UserName' and $($packages.Count) baseline packages..."
-Invoke-Wsl -Arguments @('--distribution', $DistributionName, '--user', 'root', '--', 'bash', '-lc', $command)
-Invoke-Wsl -Arguments @('--terminate', $DistributionName)
+$provisioningCompleted = $false
+try {
+    Invoke-Wsl -Arguments @('--distribution', $DistributionName, '--user', 'root', '--', 'bash', '-lc', $command)
+    $provisioningCompleted = $true
+} finally {
+    & wsl.exe --terminate $DistributionName
+    $terminationExitCode = $LASTEXITCODE
+    if ($terminationExitCode -ne 0) {
+        if ($provisioningCompleted) {
+            throw "Unable to terminate '$DistributionName'; wsl.exe exited with code $terminationExitCode."
+        }
+        Write-Warning "Provisioning failed and '$DistributionName' could not be terminated (exit $terminationExitCode)."
+    }
+}
 & (Join-Path $PSScriptRoot 'verify.ps1') -DistributionName $DistributionName -ExpectedUser $UserName -ExpectedHostname $Hostname -ExpectedVhdSize $VhdSize -ConfigPath $resolvedConfigPath
 & (Join-Path $PSScriptRoot 'capture-state.ps1') -DistributionName $DistributionName -ConfigPath $resolvedConfigPath
 Write-Host "Ubuntu is ready. Start it with: wsl ~ -d $DistributionName"

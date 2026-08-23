@@ -56,6 +56,15 @@ Describe 'Core setting validation' {
     It 'rejects unsupported VHD sizes' -ForEach @('', '50', '50GiB', '-1GB') {
         Test-WslVhdSize $_ | Should -BeFalse
     }
+
+    It 'rejects trailing line endings instead of passing values Bash will reject' -ForEach @(
+        @{ Validator = 'Test-WslDistributionName'; Value = "Work-Ubuntu`n" }
+        @{ Validator = 'Test-LinuxUserName'; Value = "developer`n" }
+        @{ Validator = 'Test-WslHostName'; Value = "work-ubuntu`n" }
+        @{ Validator = 'Test-WslVhdSize'; Value = "50GB`n" }
+    ) {
+        & $Validator $Value | Should -BeFalse
+    }
 }
 
 Describe 'WSL version parsing' {
@@ -63,8 +72,8 @@ Describe 'WSL version parsing' {
         'WSL version: 2.7.12.0',
         'WSL-Version: 2.7.12.0',
         'Version WSL : 2.7.12.0',
-        'WSL のバージョン: 2.7.12.0',
-        'Versión de WSL: 2.7.12.0'
+        ('WSL ' + [char]0x306e + [char]0x30d0 + [char]0x30fc + [char]0x30b8 + [char]0x30e7 + [char]0x30f3 + ': 2.7.12.0'),
+        ('Versi' + [char]0x00f3 + 'n de WSL: 2.7.12.0')
     ) {
         ConvertFrom-WslVersionText "$_`nKernel version: 6.6.87.2" |
             Should -Be ([version] '2.7.12')
