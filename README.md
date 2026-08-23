@@ -2,14 +2,33 @@
 
 Build consistent AMD64 Ubuntu development environments with WSL.
 
-## Download, extract, run
+## Quick start
 
-No Windows Git installation, GitHub CLI login, or PowerShell 7 installation is
-required.
+No Windows Git installation, GitHub login, or PowerShell 7 installation is
+required. On an AMD64 Windows 10/11 machine:
 
 1. Open the [latest release](https://github.com/thelarklan/wsl-tools/releases/latest).
 2. Download `wsl-tools-<version>-windows.zip` and extract it to a local folder.
-3. Open PowerShell in the extracted folder and run `Start-WslTools.cmd`.
+3. Open Windows PowerShell in the extracted folder.
+4. Run the environments you want:
+
+```powershell
+.\Start-WslTools.cmd -DistributionName codex -UserName thelarkbot -Hostname codex -VhdSize 50GB -NonInteractive
+.\Start-WslTools.cmd -DistributionName claude -UserName thelarklan -Hostname claude -VhdSize 50GB -NonInteractive
+```
+
+If setup asks for a restart, restart Windows and rerun the identical command.
+Then launch either environment:
+
+```powershell
+wsl.exe --distribution codex --cd ~
+wsl.exe --distribution claude --cd ~
+```
+
+That is the complete normal setup. The sections below explain what the launcher
+does, recovery options, verification, and project development.
+
+## How bootstrap works
 
 The launcher uses Windows PowerShell 5.1 and shows the effective plan before it
 changes the host or creates a distribution. On a fresh Windows installation it
@@ -25,14 +44,7 @@ Get-FileHash .\wsl-tools-<version>-windows.zip -Algorithm SHA256
 Get-Content .\wsl-tools-<version>-windows.zip.sha256
 ```
 
-## Create the codex and claude environments
-
-Run these commands from the extracted directory:
-
-```powershell
-.\Start-WslTools.cmd -DistributionName codex -UserName thelarkbot -Hostname codex -VhdSize 50GB -NonInteractive
-.\Start-WslTools.cmd -DistributionName claude -UserName thelarklan -Hostname claude -VhdSize 50GB -NonInteractive
-```
+## Codex and Claude environments
 
 The first command may request administrator approval and a Windows restart. If
 it does, rerun that first command after restarting, then run the second command.
@@ -44,13 +56,6 @@ UIDs in existing WSL distributions and assigns the first unused UID. In this
 example `codex` normally receives UID 1000 and `claude` receives UID 1001. Use
 `-UserId` to request another value from 1000 through 60000; setup fails closed
 if another inspected distribution already uses it.
-
-Start the environments without changing the default WSL distribution:
-
-```powershell
-wsl.exe --distribution codex --cd ~
-wsl.exe --distribution claude --cd ~
-```
 
 The names are examples, not checked-in defaults. `wsl-tools` creates generic
 Linux development environments; it does not install the Codex or Claude CLIs,
