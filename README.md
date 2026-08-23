@@ -1,48 +1,69 @@
 # wsl-tools
 
-Build a consistent AMD64 Linux development environment with WSL.
+Build consistent AMD64 Ubuntu development environments with WSL.
 
-The repository is being migrated in small, independently reviewable slices. The
-current slice adds a practical, manifest-driven command-line development
-toolchain to the guided Ubuntu environment.
+## Download, extract, run
 
-## Requirements
+No Windows Git installation, GitHub CLI login, or PowerShell 7 installation is
+required.
 
-- Windows on an AMD64/X64 host
-- PowerShell
-- Store WSL 2.4.10 or newer with `--vhd-size` support
+1. Open the [latest release](https://github.com/thelarklan/wsl-tools/releases/latest).
+2. Download `wsl-tools-<version>-windows.zip` and extract it to a local folder.
+3. Open PowerShell in the extracted folder and run `Start-WslTools.cmd`.
 
-Run the read-only prerequisite check from PowerShell:
+The launcher uses Windows PowerShell 5.1 and shows the effective plan before it
+changes the host or creates a distribution. On a fresh Windows installation it
+asks for administrator approval and runs `wsl --install --no-distribution`, so
+WSL does not create an unwanted store distribution. If Windows needs a restart,
+restart and rerun the identical command. The elevated process changes only the
+WSL host; distribution registration runs as the original Windows user.
+
+The optional `.sha256` file on the release page can be checked before extracting:
 
 ```powershell
-pwsh -NoProfile -File ./scripts/check-prerequisites.ps1
+Get-FileHash .\wsl-tools-<version>-windows.zip -Algorithm SHA256
+Get-Content .\wsl-tools-<version>-windows.zip.sha256
 ```
 
-The command validates the checked-in configuration, host architecture, WSL
-version, and required WSL command support. A successful run prints the detected
-WSL version and the selected AMD64 image and distribution defaults.
+## Create the codex and claude environments
 
-To evaluate a different checked-in-compatible configuration without editing the
-repository:
+Run these commands from the extracted directory:
 
 ```powershell
-pwsh -NoProfile -File ./scripts/check-prerequisites.ps1 -ConfigPath C:\path\to\config.psd1
+.\Start-WslTools.cmd -DistributionName codex -UserName thelarkbot -Hostname codex -VhdSize 50GB -NonInteractive
+.\Start-WslTools.cmd -DistributionName claude -UserName thelarklan -Hostname claude -VhdSize 50GB -NonInteractive
 ```
 
-## Guided setup
+The first command may request administrator approval and a Windows restart. If
+it does, rerun that first command after restarting, then run the second command.
+Both environments use the verified Ubuntu image; the second setup reuses the
+download cache.
 
-Run from the repository directory in PowerShell:
+Start the environments without changing the default WSL distribution:
 
 ```powershell
-pwsh -NoProfile -File ./scripts/setup.ps1
+wsl.exe --distribution codex --cd ~
+wsl.exe --distribution claude --cd ~
+```
+
+The names are examples, not checked-in defaults. `wsl-tools` creates generic
+Linux development environments; it does not install the Codex or Claude CLIs,
+configure agent credentials, or change editor settings.
+
+## Guided and automated setup
+
+Run the launcher without flags for guided setup:
+
+```powershell
+.\Start-WslTools.cmd
 ```
 
 The CLI prompts for the distribution name, Linux user, hostname, and VHD
-maximum, then shows the plan before downloading or installing anything. Every
-prompt also has a non-interactive equivalent:
+maximum, then shows the plan before downloading or installing anything. The
+root bootstrap accepts the same public parameters as `scripts/setup.ps1`:
 
 ```powershell
-./scripts/setup.ps1 `
+.\Start-WslTools.cmd `
   -DistributionName Work-Ubuntu `
   -UserName developer `
   -Hostname work-ubuntu `
@@ -51,47 +72,57 @@ prompt also has a non-interactive equivalent:
 ```
 
 Explicit flags override `config.psd1`. Use `-ImagePath` for an already
-downloaded Canonical image or `-CacheDirectory` to select the download cache.
-The supplied image must match the pinned SHA-256.
+downloaded Canonical image or `-CacheDirectory` to choose the download cache.
+Every image must match the pinned SHA-256.
 
-## Configuration
-
-[`config.psd1`](config.psd1) contains generic public defaults:
-
-- distribution: `UbuntuDev-26.04`
-- Linux user: `developer`
-- hostname: `ubuntu-dev`
-- maximum VHD size: `50GB`
-- image: pinned Ubuntu 26.04 AMD64 WSL image and SHA-256
-
-The setup command refuses to overwrite an existing distribution.
-
-If the initial provisioning step was interrupted after the distribution was
-created, repeat the effective settings and resume explicitly:
+The setup command refuses to overwrite an existing distribution. If initial
+provisioning was interrupted after the distribution was created, repeat the
+effective settings and resume explicitly:
 
 ```powershell
-./scripts/setup.ps1 -DistributionName Work-Ubuntu -UserName developer `
+.\Start-WslTools.cmd -DistributionName Work-Ubuntu -UserName developer `
   -Hostname work-ubuntu -VhdSize 50GB -Resume -NonInteractive
 ```
 
 Verify an existing environment without reconciling packages or writing state:
 
 ```powershell
-./scripts/setup.ps1 -DistributionName Work-Ubuntu -UserName developer `
-  -Hostname work-ubuntu -VhdSize 50GB -VerifyOnly
+.\Start-WslTools.cmd -DistributionName Work-Ubuntu -UserName developer `
+  -Hostname work-ubuntu -VhdSize 50GB -VerifyOnly -NonInteractive
+```
+
+## Requirements and configuration
+
+- Windows 10 build 19041 or newer, or Windows 11
+- AMD64/X64 host
+- Permission to approve WSL installation or updates when required
+
+`config.psd1` contains generic public defaults:
+
+- distribution: `UbuntuDev-26.04`
+- Linux user: `developer`
+- hostname: `ubuntu-dev`
+- maximum VHD size: `50GB`
+- minimum Store WSL: `2.4.10`
+- pinned Ubuntu 26.04 AMD64 WSL image and SHA-256
+
+For a read-only check on an already prepared host:
+
+```powershell
+powershell.exe -NoProfile -File .\scripts\check-prerequisites.ps1
 ```
 
 ## Development packages
 
-[`packages.txt`](packages.txt) is the baseline APT manifest. It includes Git and
-Git LFS, GitHub CLI, Python, Podman, GCC/build tools, fzf, ripgrep, ShellCheck,
-tmux, and common utilities. Package versions follow Ubuntu updates.
+`packages.txt` is the baseline APT manifest. It includes Git and Git LFS,
+GitHub CLI, Python, Podman, GCC/build tools, fzf, ripgrep, ShellCheck, tmux, and
+common utilities. Package versions follow Ubuntu updates.
 
-To add missing manifest packages to an existing configured distribution, run
-from PowerShell:
+Add missing manifest packages to an existing configured distribution from
+PowerShell:
 
 ```powershell
-./scripts/sync-packages.ps1 -DistributionName Work-Ubuntu
+.\scripts\sync-packages.ps1 -DistributionName Work-Ubuntu
 ```
 
 Or run from the repository mounted inside the distribution:
@@ -100,54 +131,42 @@ Or run from the repository mounted inside the distribution:
 bash scripts/sync-packages.sh
 ```
 
-Removing a manifest entry does not uninstall the package. Package removal stays
-explicit so this project does not unexpectedly delete dependencies.
+Removing a manifest entry never uninstalls software.
 
 ## Verification and state
 
-Successful setup and package synchronization verify the OS, architecture,
-systemd user session, configured identity, complete package manifest, rootless
-Podman, project directory, and filesystem maximum. They then write an ignored
-inventory under `state/` with exact package and selected tool versions.
-
-From inside WSL, the equivalent read-only checks and capture are:
-
-```bash
-bash scripts/verify.sh
-bash scripts/capture-state.sh
-```
+Successful setup verifies the OS, architecture, systemd user session, identity,
+package manifest, rootless Podman, project directory, hostname, and filesystem
+maximum. It writes an ignored inventory under `state/` with exact package and
+selected tool versions.
 
 Before a release, follow the
-[clean-machine acceptance checklist](docs/clean-machine-acceptance.md). It covers
-the guided cancellation path, fresh install, restart persistence, recovery,
-package reconciliation, read-only verification, and evidence to retain.
+[clean-machine acceptance checklist](docs/clean-machine-acceptance.md).
 
-## Verification
-
-Automated checks use Pester and PSScriptAnalyzer:
+Development checks:
 
 ```powershell
-Install-Module Pester -Scope CurrentUser -Force -MinimumVersion 5.5.0
+Install-Module Pester -Scope CurrentUser -Force -RequiredVersion 5.7.1
 Install-Module PSScriptAnalyzer -Scope CurrentUser -Force
 Invoke-ScriptAnalyzer -Path . -Recurse -Severity Error
-Invoke-Pester ./tests -CI
+Invoke-Pester .\tests -CI
 ```
 
-GitHub Actions is used for this slice because its executable surface is
-PowerShell on Windows and the current local Jenkins agent contract is Linux-only.
-Moving Windows validation to Jenkins can be reconsidered when an appropriate
-agent exists. The live Canonical checksum comparison runs only on a schedule, so
-ordinary pushes and pull requests do not depend on Canonical's availability or
-point-release metadata.
+On Linux, also run:
+
+```bash
+bash -n scripts/*.sh
+shellcheck scripts/*.sh
+```
 
 ## Safety
 
-The prerequisite command remains read-only. Setup validates all values before
-invoking WSL, verifies the image checksum, and rejects an existing distribution.
-Distribution unregistration will never be automated by this project because it
-irreversibly deletes that distribution's data.
+Bootstrap validates Windows and WSL before provisioning, performs host changes
+in a separate elevated process, and installs WSL without a default distribution.
+Setup validates every value, verifies the Ubuntu image checksum, and rejects an
+existing distribution unless `-Resume` or `-VerifyOnly` is explicit.
 
-## Deferred
-
-Application runtimes, editor configuration, credentials, and agent stacks are
-intentionally outside this repository's standard Linux baseline.
+The project never invokes `wsl --unregister` because that irreversibly deletes a
+distribution. It also never invokes `wsl --set-default`; an existing default is
+left alone. If the machine has never had a distribution, WSL may naturally make
+the first created distribution the default.

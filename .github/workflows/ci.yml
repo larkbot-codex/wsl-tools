@@ -15,18 +15,21 @@ jobs:
   powershell:
     if: github.event_name != 'schedule'
     runs-on: windows-latest
+    strategy:
+      matrix:
+        shell: [powershell, pwsh]
     steps:
       - uses: actions/checkout@v7
       - name: Install test tools
-        shell: pwsh
+        shell: ${{ matrix.shell }}
         run: |
-          Install-Module Pester -Scope CurrentUser -Force -MinimumVersion 5.5.0
+          Install-Module Pester -Scope CurrentUser -Force -RequiredVersion 5.7.1
           Install-Module PSScriptAnalyzer -Scope CurrentUser -Force
       - name: Analyze PowerShell
-        shell: pwsh
+        shell: ${{ matrix.shell }}
         run: Invoke-ScriptAnalyzer -Path . -Recurse -Severity Error
       - name: Run Pester
-        shell: pwsh
+        shell: ${{ matrix.shell }}
         run: Invoke-Pester ./tests -CI
 
   shell:

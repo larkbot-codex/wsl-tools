@@ -116,6 +116,92 @@ function ConvertTo-WslByteSize {
     return $sizeValue * $multiplier
 }
 
+function Get-WslHostState {
+    param(
+        [Parameter(Mandatory)][bool] $CommandAvailable,
+        [Parameter(Mandatory)][int] $VersionExitCode,
+        [AllowEmptyString()][string] $VersionText,
+        [Parameter(Mandatory)][int] $StatusExitCode,
+        [AllowEmptyString()][string] $InstallHelp,
+        [Parameter(Mandatory)][version] $MinimumVersion,
+        [Parameter(Mandatory)][bool] $VirtualMachinePlatformEnabled,
+        [Parameter(Mandatory)][bool] $RestartPending
+    )
+
+    if (-not $CommandAvailable -or $VersionExitCode -ne 0) {
+        return 'Absent'
+    }
+    if (-not $VirtualMachinePlatformEnabled) {
+        return 'Absent'
+    }
+    if ($RestartPending) {
+        return 'RestartRequired'
+    }
+
+    $version = ConvertFrom-WslVersionText $VersionText
+    if (-not $version -or $version -lt $MinimumVersion) {
+        return 'UpdateRequired'
+    }
+    if (-not (Test-WslInstallHelp $InstallHelp)) {
+        return 'UpdateRequired'
+    }
+    if ($StatusExitCode -ne 0) {
+        return 'Absent'
+    }
+
+    return 'Ready'
+}
+
+function Get-WslHostActionArguments {
+    param(
+        [Parameter(Mandatory)]
+        [ValidateSet('Install', 'Update')]
+        [string] $Action
+    )
+
+    if ($Action -eq 'Install') {
+        return @('--install', '--no-distribution')
+    }
+    return @('--update')
+}
+
+function Get-WslBootstrapAction {
+    param(
+        [Parameter(Mandatory)]
+        [ValidateSet('Ready', 'Absent', 'UpdateRequired', 'RestartRequired')]
+        [string] $HostState,
+        [switch] $VerifyOnly
+    )
+
+    if ($HostState -eq 'Ready') {
+        return 'Provision'
+    }
+    if ($VerifyOnly) {
+        return 'ReadOnlyFailure'
+    }
+    if ($HostState -eq 'RestartRequired') {
+        return 'Restart'
+    }
+    if ($HostState -eq 'Absent') {
+        return 'Install'
+    }
+    return 'Update'
+}
+
+function Get-ElevatedBootstrapArguments {
+    param(
+        [Parameter(Mandatory)][string] $ScriptPath,
+        [Parameter(Mandatory)]
+        [ValidateSet('Install', 'Update')]
+        [string] $HostAction
+    )
+
+    $escapedPath = $ScriptPath.Replace("'", "''")
+    $command = "& '$escapedPath' -HostAction '$HostAction'"
+    $encodedCommand = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($command))
+    return @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', $encodedCommand)
+}
+
 Export-ModuleMember -Function @(
     'Test-WslDistributionName',
     'Test-LinuxUserName',
@@ -126,5 +212,9 @@ Export-ModuleMember -Function @(
     'Get-WslInstallArguments',
     'Test-WslInstallHelp',
     'Read-WslPackageList',
-    'ConvertTo-WslByteSize'
+    'ConvertTo-WslByteSize',
+    'Get-WslHostState',
+    'Get-WslHostActionArguments',
+    'Get-WslBootstrapAction',
+    'Get-ElevatedBootstrapArguments'
 )
