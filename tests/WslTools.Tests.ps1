@@ -102,7 +102,9 @@ Describe 'WSL version parsing' {
         'WSL-Version: 2.7.12.0',
         'Version WSL : 2.7.12.0',
         ('WSL ' + [char]0x306e + [char]0x30d0 + [char]0x30fc + [char]0x30b8 + [char]0x30e7 + [char]0x30f3 + ': 2.7.12.0'),
-        ('Versi' + [char]0x00f3 + 'n de WSL: 2.7.12.0')
+        ('Versi' + [char]0x00f3 + 'n de WSL: 2.7.12.0'),
+        'Versione WSL: 2.7.12.0',
+        'Versao do WSL: 2.7.12.0'
     ) {
         ConvertFrom-WslVersionText "$_`nKernel version: 6.6.87.2" |
             Should -Be ([version] '2.7.12')
@@ -145,9 +147,17 @@ Describe 'WSL installation command construction' {
     }
 
     It 'does not automate destructive distribution removal' {
-        $scripts = Get-ChildItem "$PSScriptRoot/../scripts" -File -Recurse |
+        $scripts = Get-ChildItem "$PSScriptRoot/.." -File -Recurse |
+            Where-Object { $_.Extension -in @('.cmd', '.ps1', '.psm1') } |
             Get-Content -Raw
         ($scripts -join "`n") | Should -Not -Match 'wsl(?:\.exe)?\s+--unregister'
+    }
+
+    It 'does not change the default WSL distribution' {
+        $scripts = Get-ChildItem "$PSScriptRoot/.." -File -Recurse |
+            Where-Object { $_.Extension -in @('.cmd', '.ps1', '.psm1') } |
+            Get-Content -Raw
+        ($scripts -join "`n") | Should -Not -Match 'wsl(?:\.exe)?\s+--set-default(?:\s|$)'
     }
 
     It 'captures state through the checked-in Bash script' {
@@ -160,6 +170,134 @@ Describe 'WSL installation command construction' {
         $provisionScript = Get-Content "$PSScriptRoot/../scripts/provision.sh" -Raw
         $provisionScript | Should -Match 'useradd --uid "\$\{user_id\}"'
         $provisionScript | Should -Match 'refusing automatic UID migration'
+    }
+}
+
+Describe 'Fresh Windows host bootstrap' {
+    BeforeAll {
+        $completeHelp = '--install --from-file PATH --name NAME --no-launch --vhd-size SIZE'
+        $minimumVersion = [version] '2.4.10'
+    }
+
+    It 'classifies a supported host as ready' {
+        Get-WslHostState `
+            -CommandAvailable $true `
+            -VersionExitCode 0 `
+            -VersionText 'WSL version: 2.7.12.0' `
+            -StatusExitCode 0 `
+            -InstallHelp $completeHelp `
+            -MinimumVersion $minimumVersion `
+            -VirtualMachinePlatformEnabled $true `
+            -RestartPending $false |
+            Should -Be 'Ready'
+    }
+
+    It 'classifies a missing command or disabled host as absent' -ForEach @(
+        @{ Available = $false; VersionExitCode = 1; StatusExitCode = 1 }
+        @{ Available = $true; VersionExitCode = 0; StatusExitCode = 1 }
+    ) {
+        Get-WslHostState `
+            -CommandAvailable $Available `
+            -VersionExitCode $VersionExitCode `
+            -VersionText 'WSL version: 2.7.12.0' `
+            -StatusExitCode $StatusExitCode `
+            -InstallHelp $completeHelp `
+            -MinimumVersion $minimumVersion `
+            -VirtualMachinePlatformEnabled $true `
+            -RestartPending $false |
+            Should -Be 'Absent'
+    }
+
+    It 'requires an update for an old or incomplete WSL command surface' -ForEach @(
+        @{ Version = 'WSL version: 2.3.0.0'; Help = '--install' }
+        @{ Version = 'WSL version: 2.7.12.0'; Help = '--install --from-file --name --no-launch' }
+        @{ Version = 'Windows Subsystem for Linux'; Help = '--install' }
+    ) {
+        Get-WslHostState `
+            -CommandAvailable $true `
+            -VersionExitCode 0 `
+            -VersionText $Version `
+            -StatusExitCode 0 `
+            -InstallHelp $Help `
+            -MinimumVersion $minimumVersion `
+            -VirtualMachinePlatformEnabled $true `
+            -RestartPending $false |
+            Should -Be 'UpdateRequired'
+    }
+
+    It 'requires host installation when Virtual Machine Platform is disabled' {
+        Get-WslHostState `
+            -CommandAvailable $true `
+            -VersionExitCode 0 `
+            -VersionText 'WSL version: 2.7.12.0' `
+            -StatusExitCode 0 `
+            -InstallHelp $completeHelp `
+            -MinimumVersion $minimumVersion `
+            -VirtualMachinePlatformEnabled $false `
+            -RestartPending $false |
+            Should -Be 'Absent'
+    }
+
+    It 'stops for a pending Windows restart before provisioning' {
+        Get-WslHostState `
+            -CommandAvailable $true `
+            -VersionExitCode 0 `
+            -VersionText 'WSL version: 2.7.12.0' `
+            -StatusExitCode 0 `
+            -InstallHelp $completeHelp `
+            -MinimumVersion $minimumVersion `
+            -VirtualMachinePlatformEnabled $true `
+            -RestartPending $true |
+            Should -Be 'RestartRequired'
+    }
+
+    It 'installs WSL without creating an unwanted distribution' {
+        Get-WslHostActionArguments -Action Install |
+            Should -Be @('--install', '--no-distribution')
+    }
+
+    It 'uses the supported WSL update command' {
+        Get-WslHostActionArguments -Action Update | Should -Be @('--update')
+    }
+
+    It 'keeps VerifyOnly read-only when host preparation is needed' -ForEach @(
+        'Absent',
+        'UpdateRequired',
+        'RestartRequired'
+    ) {
+        Get-WslBootstrapAction -HostState $_ -VerifyOnly | Should -Be 'ReadOnlyFailure'
+    }
+
+    It 'selects the required host action before provisioning' -ForEach @(
+        @{ State = 'Ready'; Action = 'Provision' }
+        @{ State = 'Absent'; Action = 'Install' }
+        @{ State = 'UpdateRequired'; Action = 'Update' }
+        @{ State = 'RestartRequired'; Action = 'Restart' }
+    ) {
+        Get-WslBootstrapAction -HostState $State | Should -Be $Action
+    }
+
+    It 'encodes an elevation command safely when the script path contains spaces' {
+        $path = "C:\Users\Test User\Downloads\wsl-tools\bootstrap.ps1"
+        $arguments = Get-ElevatedBootstrapArguments -ScriptPath $path -HostAction Install
+        $arguments[0..2] | Should -Be @('-NoProfile', '-ExecutionPolicy', 'Bypass')
+        $arguments[3] | Should -Be '-EncodedCommand'
+        [Text.Encoding]::Unicode.GetString([Convert]::FromBase64String($arguments[4])) |
+            Should -Be "& '$path' -HostAction 'Install'"
+    }
+
+    It 'ships a Windows PowerShell launcher for the root bootstrap' {
+        $launcher = Get-Content -Raw "$PSScriptRoot/../Start-WslTools.cmd"
+        $launcher | Should -Match 'Isolate bootstrap from user-installed PowerShell modules'
+        $launcher | Should -Match 'set "PSModulePath=.*WindowsPowerShell'
+        $launcher | Should -Match 'powershell\.exe -NoProfile -ExecutionPolicy Bypass'
+        $launcher | Should -Match 'bootstrap\.ps1'
+    }
+
+    It 'fails closed when the VirtualMachinePlatform feature state cannot be read' {
+        $bootstrap = Get-Content -Raw "$PSScriptRoot/../bootstrap.ps1"
+        $bootstrap | Should -Not -Match 'virtualMachinePlatformEnabled\s*=\s*\$statusExitCode'
+        $bootstrap | Should -Match '(?s)catch\s*\{.*Unable to read Windows optional-feature state.*\}'
     }
 }
 
