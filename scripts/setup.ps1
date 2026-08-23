@@ -137,7 +137,7 @@ if (-not $exists) {
     Invoke-Wsl -Arguments $installArguments
 }
 
-$provision = ((Get-Content -Raw (Join-Path $PSScriptRoot 'provision.sh')) -replace "`r`n", "`n")
+$provision = ConvertTo-BashLineEndings (Get-Content -Raw (Join-Path $PSScriptRoot 'provision.sh'))
 $base64 = [Convert]::ToBase64String([Text.UTF8Encoding]::new($false).GetBytes($provision))
 $quotedPackages = @($packages | ForEach-Object { "'$_'" }) -join ' '
 $command = "printf '%s' '$base64' | base64 --decode | bash -s -- '$UserName' '$Hostname' $quotedPackages"

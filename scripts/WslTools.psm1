@@ -116,6 +116,12 @@ function ConvertTo-WslByteSize {
     return $sizeValue * $multiplier
 }
 
+function ConvertTo-BashLineEndings {
+    param([AllowEmptyString()][string] $Value)
+
+    return $Value -replace "`r`n", "`n" -replace "`r", "`n"
+}
+
 Export-ModuleMember -Function @(
     'Test-WslDistributionName',
     'Test-LinuxUserName',
@@ -126,5 +132,6 @@ Export-ModuleMember -Function @(
     'Get-WslInstallArguments',
     'Test-WslInstallHelp',
     'Read-WslPackageList',
-    'ConvertTo-WslByteSize'
+    'ConvertTo-WslByteSize',
+    'ConvertTo-BashLineEndings'
 )

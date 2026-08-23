@@ -40,6 +40,7 @@ python3 --version
 podman --version
 systemctl --version | head -1
 '@
+$command = ConvertTo-BashLineEndings $command
 $output = & wsl.exe --distribution $DistributionName -- bash -lc $command 2>&1
 if ($LASTEXITCODE -ne 0) { throw "Unable to capture state from '$DistributionName'." }
 @("# Distribution: $DistributionName", "# Captured: $([DateTime]::UtcNow.ToString('u'))", '') + $output |

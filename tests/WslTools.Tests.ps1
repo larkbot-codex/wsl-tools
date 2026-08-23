@@ -167,6 +167,18 @@ Describe 'Verification helpers' {
         { ConvertTo-WslByteSize '50GiB' } | Should -Throw '*Invalid WSL size*'
     }
 
+    It 'normalizes Windows and lone carriage-return line endings for Bash' {
+        $normalized = ConvertTo-BashLineEndings "first`r`nsecond`rthird`nfourth"
+
+        $normalized | Should -Be "first`nsecond`nthird`nfourth"
+        $normalized.Contains("`r") | Should -BeFalse
+    }
+
+    It 'normalizes the multiline state-capture payload before invoking Bash' {
+        Get-Content "$PSScriptRoot/../scripts/capture-state.ps1" -Raw |
+            Should -Match '\$command = ConvertTo-BashLineEndings \$command'
+    }
+
     It 'keeps generated state inventories out of source control' {
         Get-Content "$PSScriptRoot/../.gitignore" | Should -Contain 'state/*.txt'
     }
