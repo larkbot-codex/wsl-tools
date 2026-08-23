@@ -42,6 +42,23 @@ function Get-NextAvailableWslUserId {
     throw 'No unused Linux user ID is available between 1000 and 60000.'
 }
 
+function Resolve-WslUserId {
+    param([AllowNull()] $CurrentUserId, [int[]] $UsedUserIds = @(), [AllowNull()] $RequestedUserId)
+
+    if ($null -ne $CurrentUserId) {
+        if (-not (Test-WslUserId $CurrentUserId)) { throw 'The existing Linux user ID must be between 1000 and 60000.' }
+        $current = [int] $CurrentUserId
+        if ($null -ne $RequestedUserId) {
+            if (-not (Test-WslUserId $RequestedUserId)) { throw 'The Linux user ID must be between 1000 and 60000.' }
+            if ([int] $RequestedUserId -ne $current) {
+                throw "The Linux user already has UID $current; refusing to migrate it automatically to UID $RequestedUserId."
+            }
+        }
+        return $current
+    }
+    return Get-NextAvailableWslUserId -UsedUserIds $UsedUserIds -RequestedUserId $RequestedUserId
+}
+
 function Test-WslHostName {
     param([AllowEmptyString()][string] $Value)
     return $Value -match '^[A-Za-z0-9][A-Za-z0-9.-]{0,62}\z'
@@ -159,6 +176,7 @@ Export-ModuleMember -Function @(
     'Test-LinuxUserName',
     'Test-WslUserId',
     'Get-NextAvailableWslUserId',
+    'Resolve-WslUserId',
     'Test-WslHostName',
     'Test-WslVhdSize',
     'ConvertFrom-WslVersionText',

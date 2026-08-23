@@ -62,6 +62,14 @@ Describe 'Core setting validation' {
             Should -Throw '*already used*'
     }
 
+    It 'preserves an existing UID even when a legacy distribution uses the same UID' {
+        Resolve-WslUserId -CurrentUserId 1000 -UsedUserIds @(1000, 1001) | Should -Be 1000
+    }
+
+    It 'rejects an explicit migration of an existing user UID' {
+        { Resolve-WslUserId -CurrentUserId 1000 -RequestedUserId 1001 } | Should -Throw '*refusing to migrate*'
+    }
+
     It 'accepts a hostname' {
         Test-WslHostName 'work-ubuntu.example' | Should -BeTrue
     }
