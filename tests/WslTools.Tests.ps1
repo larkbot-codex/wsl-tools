@@ -310,6 +310,9 @@ Describe 'Release packaging' {
         $releaseWorkflow | Should -Match 'README\.md, AGENTS\.md, LICENSE'
         $releaseWorkflow | Should -Match 'Copy-Item state\\README\.md'
         $releaseWorkflow | Should -Not -Match 'Copy-Item scripts, docs, state'
+        $releaseWorkflow | Should -Match 'group: release-\$\{\{ github\.ref \}\}'
+        $releaseWorkflow | Should -Match 'cancel-in-progress: false'
+        $releaseWorkflow | Should -Match 'rerun for the same immutable tag intentionally replaces'
     }
 }
 

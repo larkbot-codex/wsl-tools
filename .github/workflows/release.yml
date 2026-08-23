@@ -8,6 +8,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   windows-powershell:
     runs-on: windows-latest
@@ -92,6 +96,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
         run: |
+          # A rerun for the same immutable tag intentionally replaces its release assets.
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" ./* --clobber
           else
