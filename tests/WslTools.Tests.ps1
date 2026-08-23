@@ -170,4 +170,23 @@ Describe 'Verification helpers' {
     It 'keeps generated state inventories out of source control' {
         Get-Content "$PSScriptRoot/../.gitignore" | Should -Contain 'state/*.txt'
     }
+
+    It 'treats an unavailable systemd user manager as a warning' {
+        $verification = Get-Content "$PSScriptRoot/../scripts/verify.ps1" -Raw
+        $verification | Should -Match "systemd user manager works'.*-WarningOnly"
+        $verification | Should -Match 'Rootless Podman will fall back to cgroupfs'
+        $linuxVerification = Get-Content "$PSScriptRoot/../scripts/verify.sh" -Raw
+        $linuxVerification | Should -Match "warn_check 'systemd user manager works'"
+        $linuxVerification | Should -Match 'Rootless Podman will fall back to cgroupfs'
+    }
+
+    It 'captures setup state even when verification throws' {
+        $setup = Get-Content "$PSScriptRoot/../scripts/setup.ps1" -Raw
+        $setup | Should -Match "(?s)try\s*\{\s*& \(Join-Path \$PSScriptRoot 'verify\.ps1'\).*?\}\s*finally\s*\{\s*& \(Join-Path \$PSScriptRoot 'capture-state\.ps1'\)"
+    }
+
+    It 'captures synchronization state even when verification throws' {
+        $sync = Get-Content "$PSScriptRoot/../scripts/sync-packages.ps1" -Raw
+        $sync | Should -Match "(?s)try\s*\{\s*& \(Join-Path \$PSScriptRoot 'verify\.ps1'\).*?\}\s*finally\s*\{\s*& \(Join-Path \$PSScriptRoot 'capture-state\.ps1'\)"
+    }
 }

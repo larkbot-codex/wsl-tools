@@ -29,5 +29,8 @@ if ($LASTEXITCODE -ne 0) { throw 'apt-get update failed.' }
 if ($LASTEXITCODE -ne 0) { throw 'Package installation failed.' }
 & wsl.exe --distribution $DistributionName --user root -- apt-get clean
 if ($LASTEXITCODE -ne 0) { throw 'apt-get clean failed.' }
-& (Join-Path $PSScriptRoot 'verify.ps1') -DistributionName $DistributionName -ExpectedUser $ExpectedUser -ExpectedHostname $ExpectedHostname -ExpectedVhdSize $ExpectedVhdSize -ConfigPath $resolvedConfigPath
-& (Join-Path $PSScriptRoot 'capture-state.ps1') -DistributionName $DistributionName -ConfigPath $resolvedConfigPath
+try {
+    & (Join-Path $PSScriptRoot 'verify.ps1') -DistributionName $DistributionName -ExpectedUser $ExpectedUser -ExpectedHostname $ExpectedHostname -ExpectedVhdSize $ExpectedVhdSize -ConfigPath $resolvedConfigPath
+} finally {
+    & (Join-Path $PSScriptRoot 'capture-state.ps1') -DistributionName $DistributionName -ConfigPath $resolvedConfigPath
+}

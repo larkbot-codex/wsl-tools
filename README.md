@@ -105,10 +105,13 @@ explicit so this project does not unexpectedly delete dependencies.
 
 ## Verification and state
 
-Successful setup and package synchronization verify the OS, architecture,
-systemd user session, configured identity, complete package manifest, rootless
-Podman, project directory, and filesystem maximum. They then write an ignored
-inventory under `state/` with exact package and selected tool versions.
+Setup and package synchronization verify the OS, architecture, configured
+identity, complete package manifest, rootless Podman, project directory, and
+filesystem maximum. An unavailable systemd user manager is reported as a
+warning because Podman can fall back to `cgroupfs`; it does not make an
+otherwise usable environment fail verification. State capture runs even if a
+required verification check fails, writing an ignored inventory under `state/`
+with exact package and selected tool versions for diagnosis.
 
 From inside WSL, the equivalent read-only checks and capture are:
 

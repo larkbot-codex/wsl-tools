@@ -28,10 +28,17 @@ $packages = @(Read-WslPackageList (Join-Path $repoRoot 'packages.txt'))
 $quotedPackages = @($packages | ForEach-Object { "'$_'" }) -join ' '
 
 $failures = [Collections.Generic.List[string]]::new()
-function Test-InDistro([string] $Label, [string] $Command) {
+$warnings = [Collections.Generic.List[string]]::new()
+function Test-InDistro([string] $Label, [string] $Command, [switch] $WarningOnly) {
     & wsl.exe --distribution $DistributionName -- bash -lc $Command | Out-Host
     if ($LASTEXITCODE -eq 0) { Write-Host "[PASS] $Label" -ForegroundColor Green }
-    else { Write-Host "[FAIL] $Label" -ForegroundColor Red; $failures.Add($Label) }
+    elseif ($WarningOnly) {
+        $warnings.Add($Label)
+        Write-Warning "$Label is unavailable. Rootless Podman will fall back to cgroupfs."
+    } else {
+        Write-Host "[FAIL] $Label" -ForegroundColor Red
+        $failures.Add($Label)
+    }
 }
 
 $installed = @(& wsl.exe --list --quiet 2>&1 | ForEach-Object { ($_ -replace [char] 0, '').Trim() })
@@ -43,7 +50,7 @@ Test-InDistro 'Ubuntu 26.04 release' 'grep -F VERSION_ID= /etc/os-release | grep
 Test-InDistro 'AMD64 architecture' 'test $(uname -m) = x86_64'
 Test-InDistro 'WSL 2 kernel' 'grep -qi microsoft /proc/sys/kernel/osrelease'
 Test-InDistro 'systemd is PID 1' 'test $(cat /proc/1/comm) = systemd'
-Test-InDistro 'systemd user manager works' 'systemctl --user is-active --quiet default.target'
+Test-InDistro 'systemd user manager works' 'systemctl --user is-active --quiet default.target' -WarningOnly
 Test-InDistro 'Default user' "test `$(id -un) = '$ExpectedUser'"
 Test-InDistro 'Passwordless sudo' 'sudo -n true'
 Test-InDistro 'Baseline packages installed' "dpkg-query -W $quotedPackages >/dev/null"
@@ -53,4 +60,8 @@ Test-InDistro 'Configured hostname' "test `$(cat /proc/sys/kernel/hostname) = '$
 Test-InDistro 'Filesystem maximum honors VHD limit' "test `$(df --output=size -B1 / | tail -1) -le $maximumBytes"
 
 if ($failures.Count) { throw "Verification failed: $($failures -join ', ')" }
-Write-Host "All checks passed for $DistributionName."
+if ($warnings.Count) {
+    Write-Host "All required checks passed for $DistributionName; warnings: $($warnings -join ', ')."
+} else {
+    Write-Host "All checks passed for $DistributionName."
+}
