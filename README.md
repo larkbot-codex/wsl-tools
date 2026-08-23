@@ -3,9 +3,8 @@
 Build a consistent AMD64 Linux development environment with WSL.
 
 The repository is being migrated in small, independently reviewable slices. The
-current slice defines the public configuration contract, pins the Ubuntu image
-metadata, and checks whether a Windows machine can support the planned setup.
-It does not create or modify a WSL distribution.
+current slice adds guided creation of a named Ubuntu 26.04 AMD64 distribution,
+a locked Linux user with passwordless sudo, and WSL systemd configuration.
 
 ## Requirements
 
@@ -30,6 +29,31 @@ repository:
 pwsh -NoProfile -File ./scripts/check-prerequisites.ps1 -ConfigPath C:\path\to\config.psd1
 ```
 
+## Guided setup
+
+Run from the repository directory in PowerShell:
+
+```powershell
+pwsh -NoProfile -File ./scripts/setup.ps1
+```
+
+The CLI prompts for the distribution name, Linux user, hostname, and VHD
+maximum, then shows the plan before downloading or installing anything. Every
+prompt also has a non-interactive equivalent:
+
+```powershell
+./scripts/setup.ps1 `
+  -DistributionName Work-Ubuntu `
+  -UserName developer `
+  -Hostname work-ubuntu `
+  -VhdSize 50GB `
+  -NonInteractive
+```
+
+Explicit flags override `config.psd1`. Use `-ImagePath` for an already
+downloaded Canonical image or `-CacheDirectory` to select the download cache.
+The supplied image must match the pinned SHA-256.
+
 ## Configuration
 
 [`config.psd1`](config.psd1) contains generic public defaults:
@@ -40,8 +64,7 @@ pwsh -NoProfile -File ./scripts/check-prerequisites.ps1 -ConfigPath C:\path\to\c
 - maximum VHD size: `50GB`
 - image: pinned Ubuntu 26.04 AMD64 WSL image and SHA-256
 
-Distribution creation and interactive overrides are intentionally deferred to
-the next migration slice.
+The setup command refuses to overwrite an existing distribution.
 
 ## Verification
 
@@ -63,14 +86,13 @@ point-release metadata.
 
 ## Safety
 
-The prerequisite command is read-only. It does not download an image, install or
-update WSL, create or start a distribution, change configuration, or unregister
-a distribution. Distribution unregistration will never be automated by this
-project because it irreversibly deletes that distribution's data.
+The prerequisite command remains read-only. Setup validates all values before
+invoking WSL, verifies the image checksum, and rejects an existing distribution.
+Distribution unregistration will never be automated by this project because it
+irreversibly deletes that distribution's data.
 
 ## Deferred
 
-- initial WSL distribution creation and safe user/systemd configuration
 - development package installation
 - resume, state capture, and verification workflows
 - full clean-machine acceptance documentation
