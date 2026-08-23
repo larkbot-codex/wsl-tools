@@ -9,23 +9,36 @@ permissions:
   contents: read
 
 jobs:
-  powershell:
+  windows-powershell:
     runs-on: windows-latest
-    strategy:
-      matrix:
-        shell: [powershell, pwsh]
     steps:
       - uses: actions/checkout@v7
       - name: Install test tools
-        shell: ${{ matrix.shell }}
+        shell: powershell
         run: |
           Install-Module Pester -Scope CurrentUser -Force -RequiredVersion 5.7.1
           Install-Module PSScriptAnalyzer -Scope CurrentUser -Force
       - name: Analyze PowerShell
-        shell: ${{ matrix.shell }}
+        shell: powershell
         run: Invoke-ScriptAnalyzer -Path . -Recurse -Severity Error
       - name: Run Pester
-        shell: ${{ matrix.shell }}
+        shell: powershell
+        run: Invoke-Pester ./tests -CI
+
+  powershell:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install test tools
+        shell: pwsh
+        run: |
+          Install-Module Pester -Scope CurrentUser -Force -RequiredVersion 5.7.1
+          Install-Module PSScriptAnalyzer -Scope CurrentUser -Force
+      - name: Analyze PowerShell
+        shell: pwsh
+        run: Invoke-ScriptAnalyzer -Path . -Recurse -Severity Error
+      - name: Run Pester
+        shell: pwsh
         run: Invoke-Pester ./tests -CI
 
   shell:
@@ -38,7 +51,7 @@ jobs:
         run: shellcheck scripts/*.sh
 
   package:
-    needs: [powershell, shell]
+    needs: [windows-powershell, powershell, shell]
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v7
