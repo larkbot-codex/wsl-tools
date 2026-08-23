@@ -105,10 +105,10 @@ exit the Linux shell before continuing.
 
 This release gate is deliberately stricter than routine `verify.ps1` and
 `verify.sh`. Those verifiers warn when the user manager is unavailable because
-an otherwise usable Podman installation can fall back to `cgroupfs`. Clean-host
-acceptance must additionally prove the supported dual-distribution systemd user
-sessions after setup assigns distinct UIDs. If the command does not print
-`active`, record it as a release-blocking deviation with the user-manager
+an otherwise usable Podman installation can fall back to `cgroupfs`.
+Clean-host acceptance must additionally prove the WSL-managed systemd user
+session that hosted CI cannot exercise. If the command does not print `active`,
+record it as a release-blocking deviation with the user-manager
 journal; a passing routine verifier does not satisfy this release criterion.
 
 ## 5. Exercise recovery and reconciliation
