@@ -74,6 +74,11 @@ passwordless sudo, install the package manifest, terminate once to apply WSL
 settings, pass verification, and write `state/codex.txt` and
 `state/claude.txt`. Confirm the second command reused the verified cached image.
 
+Confirm `id -u thelarkbot` reports 1000 in `codex`, `id -u thelarklan`
+reports 1001 in `claude`, and both systemd user managers remain active while
+both distributions are running. Record any pre-existing regular-user UIDs that
+changed the automatically selected values.
+
 Confirm that repeating either initial-install command fails closed with an
 existing-distribution message. It must not overwrite, reset, unregister, or
 implicitly resume the distribution.
@@ -92,6 +97,7 @@ wsl.exe --distribution claude --cd ~
 Inside each environment, confirm the expected user and hostname, then run:
 
 ```bash
+id -u
 systemctl --user is-active default.target
 sudo -n true
 bash scripts/verify.sh
@@ -118,6 +124,8 @@ Then run read-only verification:
 ```
 
 All commands must pass. Verify-only must not reconcile packages or write state.
+
+Confirm resume preserved both existing UIDs and did not rewrite ownership.
 
 ## 7. Confirm host safety
 

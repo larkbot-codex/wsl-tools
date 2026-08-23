@@ -39,6 +39,12 @@ it does, rerun that first command after restarting, then run the second command.
 Both environments use the verified Ubuntu image; the second setup reuses the
 download cache.
 
+For reliable simultaneous systemd user sessions, setup inspects regular-user
+UIDs in existing WSL distributions and assigns the first unused UID. In this
+example `codex` normally receives UID 1000 and `claude` receives UID 1001. Use
+`-UserId` to request another value from 1000 through 60000; setup fails closed
+if another inspected distribution already uses it.
+
 Start the environments without changing the default WSL distribution:
 
 ```powershell
@@ -59,13 +65,14 @@ Run the launcher without flags for guided setup:
 ```
 
 The CLI prompts for the distribution name, Linux user, hostname, and VHD
-maximum, then shows the plan before downloading or installing anything. The
+maximum, selects a host-wide unused Linux UID, then shows the plan. The
 root bootstrap accepts the same public parameters as `scripts/setup.ps1`:
 
 ```powershell
 .\Start-WslTools.cmd `
   -DistributionName Work-Ubuntu `
   -UserName developer `
+  -UserId 1001 `
   -Hostname work-ubuntu `
   -VhdSize 50GB `
   -NonInteractive
@@ -83,6 +90,9 @@ effective settings and resume explicitly:
 .\Start-WslTools.cmd -DistributionName Work-Ubuntu -UserName developer `
   -Hostname work-ubuntu -VhdSize 50GB -Resume -NonInteractive
 ```
+
+Resume preserves an existing user's UID. It never rewrites ownership or
+automatically migrates an existing user to a different UID.
 
 Verify an existing environment without reconciling packages or writing state:
 
@@ -165,6 +175,9 @@ Bootstrap validates Windows and WSL before provisioning, performs host changes
 in a separate elevated process, and installs WSL without a default distribution.
 Setup validates every value, verifies the Ubuntu image checksum, and rejects an
 existing distribution unless `-Resume` or `-VerifyOnly` is explicit.
+
+UID discovery is read-only across existing distributions. Explicit UID
+collisions and attempts to change an existing user's UID fail closed.
 
 The project never invokes `wsl --unregister` because that irreversibly deletes a
 distribution. It also never invokes `wsl --set-default`; an existing default is

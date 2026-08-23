@@ -2,6 +2,7 @@
 param(
     [string] $DistributionName,
     [string] $UserName,
+    [Nullable[int]] $UserId,
     [string] $Hostname,
     [string] $VhdSize,
     [string] $ConfigPath,
@@ -148,7 +149,7 @@ if ($bootstrapAction -in @('Install', 'Update')) {
 
 $setupParameters = @{}
 foreach ($parameterName in @(
-    'DistributionName', 'UserName', 'Hostname', 'VhdSize', 'ConfigPath',
+    'DistributionName', 'UserName', 'UserId', 'Hostname', 'VhdSize', 'ConfigPath',
     'ImagePath', 'CacheDirectory', 'NonInteractive', 'Resume', 'VerifyOnly'
 )) {
     if ($PSBoundParameters.ContainsKey($parameterName)) {
