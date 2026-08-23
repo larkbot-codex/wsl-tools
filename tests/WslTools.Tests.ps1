@@ -112,3 +112,28 @@ Describe 'WSL installation command construction' {
         ($scripts -join "`n") | Should -Not -Match 'wsl(?:\.exe)?\s+--unregister'
     }
 }
+
+Describe 'Development package manifest' {
+    It 'contains the expected baseline tools' {
+        $packages = @(Read-WslPackageList "$PSScriptRoot/../packages.txt")
+        $packages | Should -Contain 'build-essential'
+        $packages | Should -Contain 'git'
+        $packages | Should -Contain 'gh'
+        $packages | Should -Contain 'python3'
+        $packages | Should -Contain 'podman'
+        $packages | Should -Contain 'ripgrep'
+        $packages | Should -Contain 'shellcheck'
+    }
+
+    It 'rejects an option-shaped package name' {
+        $path = Join-Path $TestDrive 'packages.txt'
+        Set-Content -LiteralPath $path -Value '--allow-unauthenticated'
+        { Read-WslPackageList $path } | Should -Throw '*Invalid package name*'
+    }
+
+    It 'rejects shell metacharacters in package names' {
+        $path = Join-Path $TestDrive 'packages.txt'
+        Set-Content -LiteralPath $path -Value 'git;id'
+        { Read-WslPackageList $path } | Should -Throw '*Invalid package name*'
+    }
+}
