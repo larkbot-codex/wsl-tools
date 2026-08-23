@@ -35,10 +35,9 @@ function Get-CurrentWslHostState {
 
     $versionText = ((& wsl.exe --version 2>&1 | Out-String) -replace [char] 0, '')
     $versionExitCode = $LASTEXITCODE
-    $statusText = ((& wsl.exe --status 2>&1 | Out-String) -replace [char] 0, '')
+    & wsl.exe --status 2>&1 | Out-Null
     $statusExitCode = $LASTEXITCODE
     $helpText = ((& wsl.exe --help 2>&1 | Out-String) -replace [char] 0, '')
-    $null = $statusText
 
     $virtualMachinePlatformEnabled = $false
     $restartPending = $false
@@ -52,7 +51,6 @@ function Get-CurrentWslHostState {
             -LiteralPath 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending'
     } catch {
         Write-Verbose "Unable to read Windows optional-feature state: $_"
-        $virtualMachinePlatformEnabled = $statusExitCode -eq 0
     }
 
     $configurationPath = if ($ConfigPath) { $ConfigPath } else { Join-Path $repoRoot 'config.psd1' }

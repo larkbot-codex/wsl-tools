@@ -288,9 +288,16 @@ Describe 'Fresh Windows host bootstrap' {
 
     It 'ships a Windows PowerShell launcher for the root bootstrap' {
         $launcher = Get-Content -Raw "$PSScriptRoot/../Start-WslTools.cmd"
+        $launcher | Should -Match 'Isolate bootstrap from user-installed PowerShell modules'
         $launcher | Should -Match 'set "PSModulePath=.*WindowsPowerShell'
         $launcher | Should -Match 'powershell\.exe -NoProfile -ExecutionPolicy Bypass'
         $launcher | Should -Match 'bootstrap\.ps1'
+    }
+
+    It 'fails closed when the VirtualMachinePlatform feature state cannot be read' {
+        $bootstrap = Get-Content -Raw "$PSScriptRoot/../bootstrap.ps1"
+        $bootstrap | Should -Not -Match 'virtualMachinePlatformEnabled\s*=\s*\$statusExitCode'
+        $bootstrap | Should -Match '(?s)catch\s*\{.*Unable to read Windows optional-feature state.*\}'
     }
 }
 
