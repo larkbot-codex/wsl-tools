@@ -301,6 +301,21 @@ Describe 'Fresh Windows host bootstrap' {
     }
 }
 
+Describe 'Release packaging' {
+    BeforeAll {
+        $releaseWorkflow = Get-Content -Raw "$PSScriptRoot/../.github/workflows/release.yml"
+    }
+
+    It 'includes human and agent documentation without generated state' {
+        $releaseWorkflow | Should -Match 'README\.md, AGENTS\.md, LICENSE'
+        $releaseWorkflow | Should -Match 'Copy-Item state\\README\.md'
+        $releaseWorkflow | Should -Not -Match 'Copy-Item scripts, docs, state'
+        $releaseWorkflow | Should -Match 'group: release-\$\{\{ github\.ref \}\}'
+        $releaseWorkflow | Should -Match 'cancel-in-progress: false'
+        $releaseWorkflow | Should -Match 'rerun for the same immutable tag intentionally replaces'
+    }
+}
+
 Describe 'Development package manifest' {
     It 'contains the expected baseline tools' {
         $packages = @(Read-WslPackageList "$PSScriptRoot/../packages.txt")
