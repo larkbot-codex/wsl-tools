@@ -42,8 +42,8 @@ if ($wslVersion -lt $minimumWsl) {
 }
 
 $wslHelp = ((& wsl.exe --help 2>&1 | Out-String) -replace [char] 0, '')
-if ($wslHelp -notmatch '--vhd-size') {
-    throw 'This WSL version does not support installation-time VHD sizing. Run: wsl --update'
+if (-not (Test-WslInstallHelp $wslHelp)) {
+    throw 'This WSL version does not support the required custom-image installation options. Run: wsl --update'
 }
 
 Write-Host 'WSL prerequisites passed.' -ForegroundColor Green

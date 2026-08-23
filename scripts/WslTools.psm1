@@ -62,11 +62,37 @@ function Test-WslConfiguration {
     return $true
 }
 
+function Get-WslInstallArguments {
+    param(
+        [Parameter(Mandatory)][string] $ImagePath,
+        [Parameter(Mandatory)][string] $DistributionName,
+        [Parameter(Mandatory)][string] $VhdSize
+    )
+
+    return @(
+        '--install', '--from-file', $ImagePath,
+        '--name', $DistributionName,
+        '--vhd-size', $VhdSize,
+        '--no-launch'
+    )
+}
+
+function Test-WslInstallHelp {
+    param([AllowEmptyString()][string] $Value)
+
+    foreach ($option in @('--from-file', '--name', '--no-launch', '--vhd-size')) {
+        if (-not $Value.Contains($option)) { return $false }
+    }
+    return $true
+}
+
 Export-ModuleMember -Function @(
     'Test-WslDistributionName',
     'Test-LinuxUserName',
     'Test-WslHostName',
     'Test-WslVhdSize',
     'ConvertFrom-WslVersionText',
-    'Test-WslConfiguration'
+    'Test-WslConfiguration',
+    'Get-WslInstallArguments',
+    'Test-WslInstallHelp'
 )
