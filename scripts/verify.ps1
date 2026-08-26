@@ -57,6 +57,39 @@ Test-InDistro 'Default user' "test `$(id -un) = '$ExpectedUser'"
 if ($PSBoundParameters.ContainsKey('ExpectedUserId')) {
     Test-InDistro 'Unique Linux user ID' "test `$(id -u) = '$ExpectedUserId'"
 }
+# Both checks read only the [oobe] section, so a `command` or `defaultUid` key
+# under another section cannot satisfy or break them. The parser is the same
+# checked-in script verify.sh calls, sent in rather than reimplemented here.
+$oobeSectionScript = ConvertTo-BashLineEndings (Get-Content -Raw (Join-Path $PSScriptRoot 'oobe-section.sh'))
+$oobeSectionBase64 = [Convert]::ToBase64String([Text.UTF8Encoding]::new($false).GetBytes($oobeSectionScript))
+$oobeSection = "printf '%s' '$oobeSectionBase64' | base64 --decode | bash -s -- /etc/wsl-distribution.conf"
+
+Test-InDistro 'First-launch OOBE disabled' "! $oobeSection | grep -Eq '^[[:space:]]*command[[:space:]]*='"
+if ($PSBoundParameters.ContainsKey('ExpectedUserId')) {
+    Test-InDistro 'Distribution default UID' "$oobeSection | grep -Eq '^[[:space:]]*defaultUid[[:space:]]*=[[:space:]]*$ExpectedUserId[[:space:]]*`$'"
+    # The registry DefaultUid outranks [user] default in /etc/wsl.conf, and every
+    # check above runs `wsl.exe ... -- bash -lc`, which resolves the user through
+    # /etc/wsl.conf and never exercises the bare-launch path a user takes.
+    # A registry that cannot be read is not evidence of a correct one, so an
+    # access failure fails the check instead of passing as an absent value.
+    try {
+        $registeredUserId = Get-WslRegisteredUserId -DistributionName $DistributionName
+        $registeredUserIdState = Get-WslDefaultUidState -RegisteredUserId $registeredUserId -ExpectedUserId $ExpectedUserId
+    } catch {
+        Write-Host "[FAIL] Registered default UID ($($_.Exception.Message))" -ForegroundColor Red
+        $failures.Add('Registered default UID')
+        $registeredUserIdState = $null
+    }
+    switch ($registeredUserIdState) {
+        'Mismatch' {
+            Write-Host "[FAIL] Registered default UID (registry DefaultUid is $registeredUserId, expected $ExpectedUserId)" -ForegroundColor Red
+            Write-Host "       Repair it with: wsl --manage $DistributionName --set-default-user $ExpectedUser" -ForegroundColor Yellow
+            $failures.Add('Registered default UID')
+        }
+        'Unset' { Write-Host '[PASS] Registered default UID (not stamped; /etc/wsl.conf governs)' -ForegroundColor Green }
+        'Match' { Write-Host '[PASS] Registered default UID' -ForegroundColor Green }
+    }
+}
 Test-InDistro 'Passwordless sudo' 'sudo -n true'
 Test-InDistro 'Baseline packages installed' "dpkg-query -W $quotedPackages >/dev/null"
 Test-InDistro 'Rootless Podman works' 'podman info >/dev/null'

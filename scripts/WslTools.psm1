@@ -257,6 +257,61 @@ function Get-ElevatedBootstrapArguments {
     return @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', $encodedCommand)
 }
 
+# Returns the recorded UID, or $null only after positively locating the
+# distribution and finding no DefaultUid value on it. Every other outcome throws,
+# so a registry that could not be read is never mistaken for one that was read
+# and found empty.
+function Resolve-WslRegisteredUserId {
+    param(
+        [Parameter(Mandatory)][AllowEmptyCollection()][AllowNull()][object[]] $RegistryEntries,
+        [Parameter(Mandatory)][string] $DistributionName
+    )
+
+    foreach ($entry in $RegistryEntries) {
+        if ($null -eq $entry) { continue }
+        $entryProperties = $entry.PSObject.Properties
+        if (-not $entryProperties['DistributionName']) { continue }
+        if ($entry.DistributionName -ne $DistributionName) { continue }
+        if (-not $entryProperties['DefaultUid']) { return $null }
+
+        $parsed = 0
+        if (-not [int]::TryParse([string] $entry.DefaultUid, [ref] $parsed)) {
+            throw "Distribution '$DistributionName' has a non-numeric registry DefaultUid: '$($entry.DefaultUid)'."
+        }
+        return $parsed
+    }
+    throw "Distribution '$DistributionName' was not found under the WSL registry key."
+}
+
+function Get-WslRegisteredUserId {
+    param([Parameter(Mandatory)][string] $DistributionName)
+
+    $lxssPath = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Lxss'
+    if (-not (Test-Path -LiteralPath $lxssPath)) {
+        throw "The WSL registry key '$lxssPath' does not exist."
+    }
+    $entries = foreach ($key in @(Get-ChildItem -LiteralPath $lxssPath -ErrorAction Stop)) {
+        Get-ItemProperty -LiteralPath $key.PSPath -ErrorAction Stop
+    }
+    return Resolve-WslRegisteredUserId -RegistryEntries @($entries) -DistributionName $DistributionName
+}
+
+function Get-WslDefaultUidState {
+    param(
+        [AllowNull()] $RegisteredUserId,
+        [Parameter(Mandatory)][int] $ExpectedUserId
+    )
+
+    # WSL records 0 when no default user has been stamped for the distribution,
+    # which it also does for a freshly registered distribution whose OOBE has not
+    # run. Observed on a provisioned distribution: registry DefaultUid was 0 while
+    # a bare `wsl -d <name>` launch still resolved the user from /etc/wsl.conf.
+    # Only a nonzero disagreement is the failure #17 describes.
+    if ($null -eq $RegisteredUserId -or [string] $RegisteredUserId -eq '' -or [int] $RegisteredUserId -eq 0) { return 'Unset' }
+    if ([int] $RegisteredUserId -eq $ExpectedUserId) { return 'Match' }
+    return 'Mismatch'
+}
+
 Export-ModuleMember -Function @(
     'Test-WslDistributionName',
     'Test-LinuxUserName',
@@ -275,5 +330,8 @@ Export-ModuleMember -Function @(
     'Get-WslHostState',
     'Get-WslHostActionArguments',
     'Get-WslBootstrapAction',
-    'Get-ElevatedBootstrapArguments'
+    'Get-ElevatedBootstrapArguments',
+    'Resolve-WslRegisteredUserId',
+    'Get-WslRegisteredUserId',
+    'Get-WslDefaultUidState'
 )
