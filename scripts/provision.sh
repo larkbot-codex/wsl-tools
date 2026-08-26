@@ -63,11 +63,98 @@ write_distribution_conf() {
     printf '%s\n' "${output[@]}" > "${path}"
 }
 
+configure_user_path() {
+    local home_dir="$1"
+    local owner_name="${2:-}"
+    local marker='# wsl-tools: normalize PATH for login and non-login Bash shells.'
+    local helper_path="${home_dir}/.config/wsl-tools/path.sh"
+    local bashrc_path="${home_dir}/.bashrc"
+    local profile_path="${home_dir}/.profile"
+    local temporary
+    local -a owner_arguments=()
+    # Expanded by the user's future shell, not by this provisioning process.
+    # shellcheck disable=SC2016
+    local -a hook=(
+        "${marker}"
+        'if [ -n "${BASH_VERSION:-}" ]; then'
+        '    . "$HOME/.config/wsl-tools/path.sh"'
+        'fi'
+    )
+
+    if [[ -n ${owner_name} ]]; then
+        owner_arguments=(--owner="${owner_name}" --group="${owner_name}")
+    fi
+    install -d -m 0755 "${owner_arguments[@]}" \
+        "${home_dir}/bin" \
+        "${home_dir}/.local/bin" \
+        "${home_dir}/.config" \
+        "${home_dir}/.config/wsl-tools"
+
+    temporary="$(mktemp)"
+    cat > "${temporary}" <<'EOF'
+# Managed by wsl-tools. Keep the first occurrence of every non-empty PATH entry.
+case ":${PATH-}:" in
+    *":${HOME}/.local/bin:"*) ;;
+    *) PATH="${HOME}/.local/bin${PATH:+:${PATH}}" ;;
+esac
+case ":${PATH-}:" in
+    *":${HOME}/bin:"*) ;;
+    *) PATH="${HOME}/bin${PATH:+:${PATH}}" ;;
+esac
+
+_wsl_tools_deduplicate_path() {
+    local entry
+    local normalized=''
+    local -a entries=()
+    local -A seen=()
+
+    IFS=: read -r -a entries <<< "${PATH-}"
+    for entry in "${entries[@]}"; do
+        [[ -n ${entry} ]] || continue
+        [[ ${seen["${entry}"]+present} ]] && continue
+        seen["${entry}"]=1
+        normalized="${normalized:+${normalized}:}${entry}"
+    done
+    PATH="${normalized}"
+    export PATH
+}
+
+_wsl_tools_deduplicate_path
+unset -f _wsl_tools_deduplicate_path
+EOF
+    install -m 0644 "${owner_arguments[@]}" "${temporary}" "${helper_path}"
+    rm -f "${temporary}"
+
+    if [[ ! -e ${bashrc_path} ]]; then
+        install -m 0644 "${owner_arguments[@]}" /dev/null "${bashrc_path}"
+    fi
+    if ! grep -Fqx -- "${marker}" "${bashrc_path}"; then
+        temporary="$(mktemp)"
+        printf '%s\n' "${hook[@]}" > "${temporary}"
+        [[ -s ${bashrc_path} ]] && printf '\n' >> "${temporary}"
+        cat "${bashrc_path}" >> "${temporary}"
+        cat "${temporary}" > "${bashrc_path}"
+        rm -f "${temporary}"
+    fi
+
+    if [[ ! -e ${profile_path} ]]; then
+        install -m 0644 "${owner_arguments[@]}" /dev/null "${profile_path}"
+    fi
+    if ! grep -Fqx -- "${marker}" "${profile_path}"; then
+        [[ -s ${profile_path} ]] && printf '\n' >> "${profile_path}"
+        printf '%s\n' "${hook[@]}" >> "${profile_path}"
+    fi
+}
+
 # Exposed so the rewrite can be executed directly by tests.
 if [[ ${1:-} == --write-distribution-conf ]]; then
     write_distribution_conf \
         "${2:?usage: provision.sh --write-distribution-conf PATH UID}" \
         "${3:?usage: provision.sh --write-distribution-conf PATH UID}"
+    exit 0
+fi
+if [[ ${1:-} == --configure-user-path ]]; then
+    configure_user_path "${2:?usage: provision.sh --configure-user-path HOME}"
     exit 0
 fi
 
@@ -162,5 +249,6 @@ if ((${#packages[@]})); then
     apt-get install --yes --no-install-recommends "${packages[@]}"
     apt-get clean
 fi
+configure_user_path "/home/${user_name}" "${user_name}"
 install -d -o "${user_name}" -g "${user_name}" -m 0755 "/home/${user_name}/projects"
 printf 'Baseline provisioning complete.\n'
