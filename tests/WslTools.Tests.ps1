@@ -399,6 +399,7 @@ Describe 'Shell PATH provisioning' {
         $provisionPath = (Resolve-Path "$PSScriptRoot/../scripts/provision.sh").Path
         $verifyPath = (Resolve-Path "$PSScriptRoot/../scripts/verify-path.sh").Path
         $pathMarker = '# wsl-tools: normalize PATH for login and non-login Bash shells.'
+        $finalPathMarker = '# wsl-tools: normalize PATH after interactive Bash customizations.'
     }
 
     BeforeEach {
@@ -406,7 +407,13 @@ Describe 'Shell PATH provisioning' {
         New-Item -ItemType Directory -Path $homePath -Force | Out-Null
         [IO.File]::WriteAllText(
             (Join-Path $homePath '.bashrc'),
-            ((@('case $- in', '    *i*) ;;', '      *) return;;', 'esac') -join "`n") + "`n")
+            ((@(
+                'case $- in'
+                '    *i*) ;;'
+                '      *) return;;'
+                'esac'
+                'export PATH="$HOME/.local/bin:$PATH"'
+            ) -join "`n") + "`n")
         )
         [IO.File]::WriteAllText(
             (Join-Path $homePath '.profile'),
@@ -468,8 +475,11 @@ Describe 'Shell PATH provisioning' {
         $bashrc = @(Get-Content (Join-Path $homePath '.bashrc'))
         $profile = @(Get-Content (Join-Path $homePath '.profile'))
         @($bashrc | Where-Object { $_ -eq $pathMarker }).Count | Should -Be 1
+        @($bashrc | Where-Object { $_ -eq $finalPathMarker }).Count | Should -Be 1
         @($profile | Where-Object { $_ -eq $pathMarker }).Count | Should -Be 1
         [Array]::IndexOf($bashrc, $pathMarker) | Should -BeLessThan ([Array]::IndexOf($bashrc, 'case $- in'))
+        [Array]::IndexOf($bashrc, $finalPathMarker) |
+            Should -BeGreaterThan ([Array]::IndexOf($bashrc, 'export PATH="$HOME/.local/bin:$PATH"'))
         [Array]::IndexOf($profile, $pathMarker) | Should -BeGreaterThan ([Array]::IndexOf($profile, 'if [ -d "$HOME/bin" ]; then PATH="$HOME/bin:$PATH"; fi'))
     }
 
