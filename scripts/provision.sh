@@ -67,6 +67,8 @@ configure_user_path() {
     local home_dir="$1"
     local owner_name="${2:-}"
     local marker='# wsl-tools: normalize PATH for login and non-login Bash shells.'
+    local final_marker='# wsl-tools: normalize PATH after interactive Bash customizations.'
+    local final_end_marker='# wsl-tools: end interactive PATH normalization.'
     local helper_path="${home_dir}/.config/wsl-tools/path.sh"
     local bashrc_path="${home_dir}/.bashrc"
     local profile_path="${home_dir}/.profile"
@@ -80,14 +82,25 @@ configure_user_path() {
         '    . "$HOME/.config/wsl-tools/path.sh"'
         'fi'
     )
+    # Expanded by the user's future shell, not by this provisioning process.
+    # shellcheck disable=SC2016
+    local -a final_hook=(
+        "${final_marker}"
+        'if [ -n "${BASH_VERSION:-}" ]; then'
+        '    . "$HOME/.config/wsl-tools/path.sh"'
+        'fi'
+        "${final_end_marker}"
+    )
 
     if [[ -n ${owner_name} ]]; then
         owner_arguments=(--owner="${owner_name}" --group="${owner_name}")
     fi
+    if [[ ! -d ${home_dir}/.config ]]; then
+        install -d -m 0755 "${owner_arguments[@]}" "${home_dir}/.config"
+    fi
     install -d -m 0755 "${owner_arguments[@]}" \
         "${home_dir}/bin" \
         "${home_dir}/.local/bin" \
-        "${home_dir}/.config" \
         "${home_dir}/.config/wsl-tools"
 
     temporary="$(mktemp)"
@@ -136,6 +149,22 @@ EOF
         cat "${temporary}" > "${bashrc_path}"
         rm -f "${temporary}"
     fi
+
+    # Reconcile this block to the end on every run so PATH changes added by a
+    # user or installer after initial provisioning are normalized as well.
+    temporary="$(mktemp)"
+    if ! awk -v start="${final_marker}" -v finish="${final_end_marker}" '
+        $0 == start { inside = 1; next }
+        inside && $0 == finish { inside = 0; next }
+        !inside { print }
+        END { if (inside) exit 1 }
+    ' "${bashrc_path}" > "${temporary}"; then
+        rm -f "${temporary}"
+        return 1
+    fi
+    cat "${temporary}" > "${bashrc_path}"
+    rm -f "${temporary}"
+    printf '%s\n' "${final_hook[@]}" >> "${bashrc_path}"
 
     if [[ ! -e ${profile_path} ]]; then
         install -m 0644 "${owner_arguments[@]}" /dev/null "${profile_path}"
