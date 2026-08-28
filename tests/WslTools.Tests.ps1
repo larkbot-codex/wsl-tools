@@ -30,8 +30,10 @@ Describe 'Public configuration' {
         $config.UbuntuRelease | Should -Be '26.04'
         $config.ImageOrder | Should -Be @('26.04', '24.04')
         $config.Images.AMD64['26.04'].FileName | Should -Be 'ubuntu-26.04-wsl-amd64.wsl'
+        $config.Images.AMD64['26.04'].Sha256SumsUrl | Should -Be 'https://releases.ubuntu.com/resolute/SHA256SUMS'
         $config.Images.AMD64['26.04'].Sha256 | Should -Be '96c7f5fb28a7fe28245331f9bfbe4375f18dd29a4850116ad3c4f60f6700c55c'
         $config.Images.AMD64['24.04'].FileName | Should -Be 'ubuntu-24.04.4-wsl-amd64.wsl'
+        $config.Images.AMD64['24.04'].Sha256SumsUrl | Should -Be 'https://releases.ubuntu.com/noble/SHA256SUMS'
         $config.Images.AMD64['24.04'].Sha256 | Should -Be '9b2f7730dc68227dd04a9f3e5eab86ad85caf556b8606ad94f1f29ff5c4fd3f5'
     }
 
@@ -45,6 +47,23 @@ Describe 'Public configuration' {
         $invalid.Images.AMD64['26.04'] = @{} + $config.Images.AMD64['26.04']
         $invalid.Images.AMD64['26.04'].Sha256 = 'not-a-hash'
         Test-WslConfiguration $invalid | Should -BeFalse
+    }
+
+    It 'builds and executes a metadata check for every pinned release' {
+        $checks = @(Get-WslImageMetadataChecks $config)
+        $checks.UbuntuRelease | Should -Be @('26.04', '24.04')
+        $checks.Sha256SumsUrl | Should -Be @(
+            'https://releases.ubuntu.com/resolute/SHA256SUMS'
+            'https://releases.ubuntu.com/noble/SHA256SUMS'
+        )
+
+        foreach ($check in $checks) {
+            $sums = "unrelated`n$($check.ExpectedLine)`n"
+            Test-WslImageMetadataEntry -Sha256Sums $sums -ExpectedLine $check.ExpectedLine |
+                Should -BeTrue
+            Test-WslImageMetadataEntry -Sha256Sums 'unrelated' -ExpectedLine $check.ExpectedLine |
+                Should -BeFalse
+        }
     }
 
     It 'lists every pinned image with the default first' {
