@@ -110,7 +110,7 @@ function Test-WslConfiguration {
         if ($release -notmatch '^[0-9]{2}\.[0-9]{2}\z' -or -not $images.ContainsKey($release)) { return $false }
         $image = $images[$release]
         if (-not $image) { return $false }
-        foreach ($key in @('DisplayName', 'DistributionName', 'FileName', 'Url', 'Sha256')) {
+        foreach ($key in @('DisplayName', 'DistributionName', 'FileName', 'Url', 'Sha256SumsUrl', 'Sha256')) {
             if (-not $image.ContainsKey($key)) { return $false }
         }
         if ([string]::IsNullOrWhiteSpace([string] $image.DisplayName)) { return $false }
@@ -121,6 +121,10 @@ function Test-WslConfiguration {
         $imageUri = $null
         if (-not [uri]::TryCreate([string] $image.Url, [UriKind]::Absolute, [ref] $imageUri)) { return $false }
         if ($imageUri.Scheme -ne 'https') { return $false }
+
+        $sumsUri = $null
+        if (-not [uri]::TryCreate([string] $image.Sha256SumsUrl, [UriKind]::Absolute, [ref] $sumsUri)) { return $false }
+        if ($sumsUri.Scheme -ne 'https' -or -not $sumsUri.AbsolutePath.EndsWith('/SHA256SUMS')) { return $false }
     }
     if ($Configuration.DistributionName -ne $images[$Configuration.UbuntuRelease].DistributionName) { return $false }
 
@@ -178,6 +182,33 @@ function Get-WslImageMenuLines {
         '{0}. {1}{2}' -f ($index + 1), $image.DisplayName, $defaultMarker
     }
     return @($lines)
+}
+
+function Get-WslImageMetadataChecks {
+    param([Parameter(Mandatory)][hashtable] $Configuration)
+
+    if (-not (Test-WslConfiguration $Configuration)) {
+        throw 'Cannot check image metadata from an invalid WSL configuration.'
+    }
+
+    return @($Configuration.ImageOrder | ForEach-Object {
+        $release = [string] $_
+        $image = $Configuration.Images.AMD64[$release]
+        [pscustomobject] @{
+            UbuntuRelease  = $release
+            Sha256SumsUrl  = [string] $image.Sha256SumsUrl
+            ExpectedLine   = "$($image.Sha256) *$($image.FileName)"
+        }
+    })
+}
+
+function Test-WslImageMetadataEntry {
+    param(
+        [AllowEmptyString()][string] $Sha256Sums,
+        [Parameter(Mandatory)][string] $ExpectedLine
+    )
+
+    return @($Sha256Sums -split "`r?`n") -contains $ExpectedLine
 }
 
 function Get-WslInstallArguments {
@@ -393,6 +424,8 @@ Export-ModuleMember -Function @(
     'Test-WslConfiguration',
     'Resolve-WslImageSelection',
     'Get-WslImageMenuLines',
+    'Get-WslImageMetadataChecks',
+    'Test-WslImageMetadataEntry',
     'Get-WslInstallArguments',
     'Test-WslInstallHelp',
     'Read-WslPackageList',
