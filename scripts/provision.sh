@@ -67,6 +67,7 @@ configure_user_path() {
     local home_dir="$1"
     local owner_name="${2:-}"
     local marker='# wsl-tools: normalize PATH for login and non-login Bash shells.'
+    local profile_end_marker='# wsl-tools: end login PATH normalization.'
     local final_marker='# wsl-tools: normalize PATH after interactive Bash customizations.'
     local final_end_marker='# wsl-tools: end interactive PATH normalization.'
     local helper_path="${home_dir}/.config/wsl-tools/path.sh"
@@ -81,6 +82,10 @@ configure_user_path() {
         'if [ -n "${BASH_VERSION:-}" ]; then'
         '    . "$HOME/.config/wsl-tools/path.sh"'
         'fi'
+    )
+    local -a profile_hook=(
+        "${hook[@]}"
+        "${profile_end_marker}"
     )
     # Expanded by the user's future shell, not by this provisioning process.
     # shellcheck disable=SC2016
@@ -169,10 +174,63 @@ EOF
     if [[ ! -e ${profile_path} ]]; then
         install -m 0644 "${owner_arguments[@]}" /dev/null "${profile_path}"
     fi
-    if ! grep -Fqx -- "${marker}" "${profile_path}"; then
-        [[ -s ${profile_path} ]] && printf '\n' >> "${profile_path}"
-        printf '%s\n' "${hook[@]}" >> "${profile_path}"
+
+    # Reconcile the login-shell block as well. Older installations do not have
+    # an end marker, so remove only the exact legacy block and fail closed if a
+    # managed block was edited instead of consuming nearby user configuration.
+    temporary="$(mktemp)"
+    if ! awk \
+        -v start="${marker}" \
+        -v condition='if [ -n "${BASH_VERSION:-}" ]; then' \
+        -v source_line='    . "$HOME/.config/wsl-tools/path.sh"' \
+        -v finish="${profile_end_marker}" '
+        !inside && $0 == start {
+            inside = 1
+            phase = 1
+            next
+        }
+        inside && phase == 1 {
+            if ($0 != condition) exit 1
+            phase = 2
+            next
+        }
+        inside && phase == 2 {
+            if ($0 != source_line) exit 1
+            phase = 3
+            next
+        }
+        inside && phase == 3 {
+            if ($0 != "fi") exit 1
+            phase = 4
+            next
+        }
+        inside && phase == 4 {
+            inside = 0
+            phase = 0
+            if ($0 == finish) next
+            if ($0 == start) {
+                inside = 1
+                phase = 1
+                next
+            }
+            print
+            next
+        }
+        $0 == finish { exit 1 }
+        { print }
+        END {
+            if (inside && phase < 4) exit 1
+        }
+    ' "${profile_path}" > "${temporary}"; then
+        rm -f "${temporary}"
+        return 1
     fi
+    cat "${temporary}" > "${profile_path}"
+    rm -f "${temporary}"
+    if [[ -s ${profile_path} ]] && ! tail -n 1 "${profile_path}" | grep -Eq '^[[:space:]]*$'; then
+        printf '\n' >> "${profile_path}"
+    fi
+    printf '%s\n' "${profile_hook[@]}" >> "${profile_path}"
 }
 
 # Exposed so the rewrite can be executed directly by tests.
